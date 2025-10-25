@@ -73,10 +73,12 @@ def handle_message(data):
                 if (len(scanned_tags) == 4):
                     # dewarp the image and save the dewarped image
                     dewarped_img = image.dewarp_omr(filepath, scanned_tags)
+                    print("Dewarped image.")
                     dewarped_filename = f"{Path(filepath).stem}_dewarped.jpg"
                     dewarped_filepath = os.path.join(DEWARPED_DIR, dewarped_filename)
 
                     cv2.imwrite(dewarped_filepath, dewarped_img)
+                    print(f"Saved dewarped image to {dewarped_filepath}")
 
                     # send the image to gemini, and send back the results
                     results = gemini.scanImage(dewarped_filepath)
