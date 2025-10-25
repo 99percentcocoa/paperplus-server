@@ -16,6 +16,7 @@ load_dotenv()
 app = Flask(__name__)
 
 SAVE_DIR = "downloads"
+DEWARPED_DIR = "dewarped"
 SHEETS_LOGGING_URL = os.getenv("SHEETS_LOGGING_URL")
 
 def log_to_sheet(sender, filename, marked, score):
@@ -72,8 +73,8 @@ def handle_message(data):
                 if (len(scanned_tags) == 4):
                     # dewarp the image and save the dewarped image
                     dewarped_img = image.dewarp_omr(filepath, scanned_tags)
-                    dewarped_filename = f"{Path(filepath)}_dewarped.jpg"
-                    dewarped_filepath = f"./dewarped/{dewarped_filename}"
+                    dewarped_filename = f"{Path(filepath).stem}_dewarped.jpg"
+                    dewarped_filepath = os.path.join(DEWARPED_DIR, dewarped_filename)
 
                     cv2.imwrite(dewarped_filepath, dewarped_img)
 
@@ -127,8 +128,6 @@ def check_results(results, ans_key):
         
         return f"Congratulations! Total marks: {marks}/7"
 
-
-    
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=3000)
