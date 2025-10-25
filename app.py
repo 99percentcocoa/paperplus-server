@@ -70,6 +70,7 @@ def handle_message(data):
                 sendmessage.sendMessage(fromNo, "Processing...")
 
                 scanned_tags = apriltags.detect_tags(filepath)
+                print(f"Detected tags: {list(map(lambda x:x.tag_id, scanned_tags))}")
                 if (len(scanned_tags) == 4):
                     # dewarp the image and save the dewarped image
                     dewarped_img = image.dewarp_omr(filepath, scanned_tags)

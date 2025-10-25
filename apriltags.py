@@ -16,8 +16,8 @@ def detect_tags(filepath):
     gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
     detection = at_detector.detect(gray_img)
-    detected_tags = list(map(lambda x:x.tag_id, detection))
-    return detected_tags
+    # detected_tags = list(map(lambda x:x.tag_id, detection))
+    return detection
 
 if __name__ == "__main__":
     print(detect_tags('testaprilfull.jpg'))
