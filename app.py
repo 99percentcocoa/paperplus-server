@@ -7,6 +7,9 @@ import sendmessage
 import apriltags
 import json
 import threading
+import image
+import cv2
+from pathlib import Path
 
 load_dotenv()
 
@@ -67,8 +70,15 @@ def handle_message(data):
 
                 scanned_tags = apriltags.detect_tags(filepath)
                 if (len(scanned_tags) == 4):
+                    # dewarp the image and save the dewarped image
+                    dewarped_img = image.dewarp_omr(filepath, scanned_tags)
+                    dewarped_filename = f"{Path(filepath)}_dewarped.jpg"
+                    dewarped_filepath = f"./dewarped/{dewarped_filename}"
+
+                    cv2.imwrite(dewarped_filepath, dewarped_img)
+
                     # send the image to gemini, and send back the results
-                    results = gemini.scanImage(filepath)
+                    results = gemini.scanImage(dewarped_filepath)
                     # print(f"Results: {results}")
 
                     # send message with reply

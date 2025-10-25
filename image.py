@@ -1,4 +1,49 @@
 import cv2
+import numpy as np
+
+TARGET_WIDTH = 1200
+TARGET_HEIGHT = 1600
+
+# dewarping using apriltags
+def dewarp_omr(filepath, tags):
+    image = cv2.imread(filepath)
+    
+    if len(tags) != 4:
+        print("Less than 4 tags detected.")
+        return []
+
+    tag_centers = []
+    for t in tags:
+        tag_centers.append(t.center)
+    print(tag_centers)
+
+    source_pts = np.array(tag_centers, dtype="float32")
+    # 1. Sort by sum: Find Top-Left (min sum) and Bottom-Right (max sum)
+    s = source_pts.sum(axis=1)
+    tl = source_pts[np.argmin(s)]
+    br = source_pts[np.argmax(s)]
+
+    # 2. Sort by difference: Find Top-Right (min diff) and Bottom-Left (max diff)
+    d = np.diff(source_pts, axis=1)
+    tr = source_pts[np.argmin(d)]
+    bl = source_pts[np.argmax(d)]
+    
+    # Re-order the final source points: TL, TR, BR, BL
+    # This is the essential input for cv2.getPerspectiveTransform
+    src_pts_aligned = np.array([tl, tr, br, bl], dtype="float32")
+
+    dst_pts = np.array([
+        [0, 0],
+        [TARGET_WIDTH - 1, 0],
+        [TARGET_WIDTH - 1, TARGET_HEIGHT - 1],
+        [0, TARGET_HEIGHT - 1]], dtype="float32")
+
+    # Calculate the global perspective transform matrix (M)
+    M = cv2.getPerspectiveTransform(src_pts_aligned, dst_pts)
+
+    # Apply the dewarping
+    dewarped = cv2.warpPerspective(image, M, (TARGET_WIDTH, TARGET_HEIGHT))
+    return dewarped
 
 # split image into halves
 def split_img(filepath):
@@ -10,8 +55,10 @@ def split_img(filepath):
     left_half = image[:, :mid_x]
     right_half = image[:, mid_x:]
 
-    cv2.imwrite(f"{filepath}_left.jpg", left_half)
-    cv2.imwrite(f"{filepath}_right.jpg", right_half)
+    return [left_half, right_half]
+
+    # cv2.imwrite(f"{filepath}_left.jpg", left_half)
+    # cv2.imwrite(f"{filepath}_right.jpg", right_half)
 
 if __name__ == "__main__":
     split_img("2col.jpg_dewarped.jpg")
