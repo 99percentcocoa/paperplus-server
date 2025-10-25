@@ -1,0 +1,26 @@
+# Python cache files
+__pycache__/
+*.pyc
+
+# Virtual environment
+venv/
+serverenv/
+env/
+
+# Local settings and secrets
+config.json
+.env
+secrets.json
+
+# Logs and temp files
+*.log
+*.tmp
+
+# System or editor files
+.DS_Store
+.idea/
+.vscode/
+
+# Uploads or generated data
+downloads/
+images/
