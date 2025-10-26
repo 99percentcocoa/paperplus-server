@@ -1,6 +1,6 @@
 from dotenv import load_dotenv
 import os
-from flask import Flask, request, send_from_directory
+from flask import Flask, request, send_from_directory, abort
 import os, requests, time
 import gemini
 import sendmessage
@@ -19,10 +19,15 @@ SAVE_DIR = "downloads"
 DEWARPED_DIR = "dewarped"
 SHEETS_LOGGING_URL = os.getenv("SHEETS_LOGGING_URL")
 
-def log_to_sheet(sender, filename, marked, score):
+DOWNLOADS_PATH = os.getenv("DOWNLOADS_PATH")
+DEWARPED_PATH = os.getenv("DEWARPED_PATH")
+SERVER_IP = os.getenv("SERVER_IP")
+
+def log_to_sheet(sender, fileURL, dewarpedURL, marked, score):
     payload = {
         "sender": sender,
-        "filename": filename,
+        "fileURL": fileURL,
+        "dewarpedURL": dewarpedURL
         "marked": marked,
         "score": score
     }
@@ -59,6 +64,7 @@ def handle_message(data):
                 r = requests.get(url, stream=True, timeout=30)
                 ext = r.headers.get("Content-Type", "image/jpeg").split("/")[-1]
                 filename = f"{message.get('from','unknown')[1:]}_{int(time.time())}.{ext}"
+                fileURL = f"http://{SERVER_IP}:3000/{filename}"
 
                 filepath = os.path.join(SAVE_DIR, filename)
                 with open(filepath, "wb") as f:
@@ -77,6 +83,7 @@ def handle_message(data):
                     print("Dewarped image.")
                     dewarped_filename = f"{Path(filepath).stem}_dewarped.jpg"
                     dewarped_filepath = os.path.join(DEWARPED_DIR, dewarped_filename)
+                    dewarpedURL = f"http://{SERVER_IP}:3000/{dewarped_filename}"
 
                     cv2.imwrite(dewarped_filepath, dewarped_img)
                     print(f"Saved dewarped image to {dewarped_filepath}")
@@ -100,17 +107,17 @@ def handle_message(data):
                     sendmessage.sendMessage(fromNo, score)
 
                     # log successful scan to google sheet
-                    log_to_sheet(fromNo, filename, json.dumps(results_combined), score)
+                    log_to_sheet(fromNo, filename, fileURL, dewarpedURL, json.dumps(results_combined), score)
                 else:
                     sendmessage.sendMessage(fromNo, "Please take a complete photo of the image. ⟳")
 
                     # log failed scan to google sheet
-                    log_to_sheet(fromNo, filename, "failed", "")
+                    log_to_sheet(fromNo, filename, "", "", "failed", "")
             else:
                 sendmessage.sendMessage(fromNo, "Please send an image of a scanned worksheet.")
 
                 # log failed scan to google sheet
-                log_to_sheet(fromNo, "none", "failed", "")
+                log_to_sheet(fromNo, "none", "", "", "failed", "")
     except Exception as e:
         print("Error in background thread: ", e)
 
@@ -138,6 +145,14 @@ def check_results(results, ans_key):
         
         return f"Congratulations! Total marks: {marks}/20"
 
+
+# serve files from downloads
+@app.route('/files/<path:filename>')
+def serve_file(filename):
+    try:
+        return send_from_directory(DOWNLOADS_PATH, filename, as_attachment=False)
+    except FileNotFoundError:
+        abort(404)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=3000)
