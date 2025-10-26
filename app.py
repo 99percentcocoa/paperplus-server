@@ -93,7 +93,7 @@ def handle_message(data):
                     print(f"Combined results: {results_combined}")
 
                     # send message with reply
-                    sendmessage.sendMessage(fromNo, f"Marked answers: {', '.join(results_combined)}")
+                    sendmessage.sendMessage(fromNo, f"Marked answers: {', '.join(f"{i}. {item}" for i, item in enumerate(results_combined, start=1))}")
 
                     # calculate and send score
                     score = check_results(results_combined, ['C', 'A', 'D', 'C', 'C', 'A', 'D', 'C', 'D', 'A', 'B', 'C', 'A', 'D', 'C', 'C', 'A', 'C', 'A', 'B'])
@@ -136,7 +136,7 @@ def check_results(results, ans_key):
             if marked_lowercase[i] == anskey_lowercase[i]:
                 marks += 1
         
-        return f"Congratulations! Total marks: {marks}/7"
+        return f"Congratulations! Total marks: {marks}/20"
 
 
 if __name__ == "__main__":
