@@ -93,7 +93,7 @@ def handle_message(data):
                     print(f"Combined results: {results_combined}")
 
                     # send message with reply
-                    sendmessage.sendMessage(fromNo, f"Marked answers: {', '.join(f"{i}. {item}" for i, item in enumerate(results_combined, start=1))}")
+                    sendmessage.sendMessage(fromNo, ', '.join(f"{i}. {item}" for i, item in enumerate(results_combined, start=1)))
 
                     # calculate and send score
                     score = check_results(results_combined, ['C', 'A', 'D', 'C', 'C', 'A', 'D', 'C', 'D', 'A', 'B', 'C', 'A', 'D', 'C', 'C', 'A', 'C', 'A', 'B'])
