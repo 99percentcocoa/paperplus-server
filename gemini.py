@@ -2,6 +2,8 @@ from dotenv import load_dotenv
 import os
 from google import genai
 from google.genai import types
+import cv2
+import numpy as np
 import json
 
 load_dotenv()
@@ -9,9 +11,19 @@ load_dotenv()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 
-def scanImage(filepath):
-    with open(filepath, 'rb') as f:
-        image_bytes = f.read()
+def scanImage(image_input):
+
+    # case 1: image input is a file path
+    if isinstance(image_input, str):
+        with open(image_input, 'rb') as f:
+            image_bytes = f.read()
+    
+    # case 2: image input is an opencv image array
+    elif isinstance(image_input, np.ndarray):
+        success, buffer = cv2.imencode('.jpg', image_input)
+        if not success:
+            raise ValueError("Failed to encode OpenCV image.")
+        image_bytes = buffer.tobytes()
 
     client = genai.Client(api_key=GEMINI_API_KEY)
 
@@ -42,8 +54,8 @@ def scanImage(filepath):
             },
             temperature=0.0,
             system_instruction="""You are a teacher's assistant. Your role is to identify marked student responses in multiple-choice OMR worksheets.
-    There are 7 questions on each page, each question having 4 options A, B, C and D in a row from left to right, each with a bubble which students darken to mark their answer. Identify the marked option by checking which of the 4 bubbles is darkened.
-    Identify the marked answers for all 7 questions in the worksheet."""
+    There are 10 questions on each page, each question having 4 options A, B, C and D in a row from left to right, each with a bubble which students darken to mark their answer. Identify the marked option by checking which of the 4 bubbles is darkened.
+    Identify the marked answers for all 10 questions in the worksheet."""
         )
     )
     print(response.text)

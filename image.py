@@ -46,8 +46,8 @@ def dewarp_omr(filepath, tags):
     return dewarped
 
 # split image into halves
-def split_img(filepath):
-    image = cv2.imread(filepath)
+def split_img(image):
+    # image = cv2.imread(filepath)
     height, width = image.shape[:2]
 
     mid_x = width // 2

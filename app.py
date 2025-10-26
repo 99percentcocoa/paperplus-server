@@ -81,19 +81,26 @@ def handle_message(data):
                     cv2.imwrite(dewarped_filepath, dewarped_img)
                     print(f"Saved dewarped image to {dewarped_filepath}")
 
+                    # split image into left half and right half
+                    dewarped_left, dewarped_right = image.split_img(dewarped_img)
+
                     # send the image to gemini, and send back the results
-                    results = gemini.scanImage(dewarped_filepath)
-                    # print(f"Results: {results}")
+                    results_left = gemini.scanImage(dewarped_left)['marked_answers']
+                    print(f"Left results: {results_left}")
+                    results_right = gemini.scanImage(dewarped_right)['marked_answers']
+                    print(f"Right results: {results_right}")
+                    results_combined = [val for pair in zip(results_left, results_right) for val in pair]
+                    print(f"Combined results: {results_combined}")
 
                     # send message with reply
-                    sendmessage.sendMessage(fromNo, json.dumps(results))
+                    sendmessage.sendMessage(fromNo, f"Marked answers: {', '.join(results_combined)}")
 
                     # calculate and send score
-                    score = check_results(results, ['C', 'A', 'D', 'C', 'D', 'A', 'B'])
+                    score = check_results(results_combined, ['C', 'A', 'D', 'C', 'C', 'A', 'D', 'C', 'D', 'A', 'B', 'C', 'A', 'D', 'C', 'C', 'A', 'C', 'A', 'B'])
                     sendmessage.sendMessage(fromNo, score)
 
                     # log successful scan to google sheet
-                    log_to_sheet(fromNo, filename, json.dumps(results), score)
+                    log_to_sheet(fromNo, filename, json.dumps(results_combined), score)
                 else:
                     sendmessage.sendMessage(fromNo, "Please take a complete photo of the image. ⟳")
 
@@ -117,10 +124,10 @@ def webhook():
 
 def check_results(results, ans_key):
     print("Checking results.")
-    if (len(results['marked_answers']) != len(ans_key)):
+    if (len(results) != len(ans_key)):
         return "An error occurred. Please try again. ⟳"
     else:
-        marked_lowercase = [item.lower() for item in results['marked_answers']]
+        marked_lowercase = [item.lower() for item in results]
         anskey_lowercase = [item.lower() for item in ans_key]
 
         marks = 0
