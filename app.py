@@ -155,8 +155,8 @@ def serve_file(filename):
         abort(404)
 
 # serve files from dewarped
-@app.route('/files/<path:filename>')
-def serve_file(filename):
+@app.route('/dewarped/<path:filename>')
+def serve_dewarped_file(filename):
     try:
         return send_from_directory(DEWARPED_PATH, filename, as_attachment=False)
     except FileNotFoundError:
