@@ -154,5 +154,13 @@ def serve_file(filename):
     except FileNotFoundError:
         abort(404)
 
+# serve files from dewarped
+@app.route('/files/<path:filename>')
+def serve_file(filename):
+    try:
+        return send_from_directory(DEWARPED_PATH, filename, as_attachment=False)
+    except FileNotFoundError:
+        abort(404)
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=3000)
