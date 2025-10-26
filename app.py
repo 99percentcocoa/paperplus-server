@@ -27,7 +27,7 @@ def log_to_sheet(sender, fileURL, dewarpedURL, marked, score):
     payload = {
         "sender": sender,
         "fileURL": fileURL,
-        "dewarpedURL": dewarpedURL
+        "dewarpedURL": dewarpedURL,
         "marked": marked,
         "score": score
     }
@@ -107,17 +107,17 @@ def handle_message(data):
                     sendmessage.sendMessage(fromNo, score)
 
                     # log successful scan to google sheet
-                    log_to_sheet(fromNo, filename, fileURL, dewarpedURL, json.dumps(results_combined), score)
+                    log_to_sheet(fromNo, fileURL, dewarpedURL, json.dumps(results_combined), score)
                 else:
                     sendmessage.sendMessage(fromNo, "Please take a complete photo of the image. ⟳")
 
                     # log failed scan to google sheet
-                    log_to_sheet(fromNo, filename, "", "", "failed", "")
+                    log_to_sheet(fromNo, fileURL, "", "failed", "")
             else:
                 sendmessage.sendMessage(fromNo, "Please send an image of a scanned worksheet.")
 
-                # log failed scan to google sheet
-                log_to_sheet(fromNo, "none", "", "", "failed", "")
+                # log failed scan (user message does not contain image) to google sheet
+                log_to_sheet(fromNo, "none", "", "failed", "")
     except Exception as e:
         print("Error in background thread: ", e)
 
