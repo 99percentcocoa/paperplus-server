@@ -1,8 +1,8 @@
 import cv2
 import numpy as np
 
-TARGET_WIDTH = 1200
-TARGET_HEIGHT = 1600
+TARGET_WIDTH = 1240
+TARGET_HEIGHT = 1754
 
 # dewarping using apriltags
 def dewarp_omr(filepath, tags):
@@ -61,4 +61,4 @@ def split_img(image):
     # cv2.imwrite(f"{filepath}_right.jpg", right_half)
 
 if __name__ == "__main__":
-    split_img("2col.jpg_dewarped.jpg")
+    dewarp_omr("2col.jpg_dewarped.jpg")
