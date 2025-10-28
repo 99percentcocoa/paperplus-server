@@ -20,4 +20,4 @@ def detect_tags(filepath):
     return detection
 
 if __name__ == "__main__":
-    print(detect_tags('testaprilfull.jpg'))
+    print(detect_tags('testing/testaprilfull.jpg'))
