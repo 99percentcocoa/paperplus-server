@@ -131,7 +131,7 @@ def handle_message(data):
                     cv2.imwrite(debug_filepath, debug_img)
 
                     # send message with reply
-                    sendmessage.sendMessage(fromNo, ', '.join(f"{i}. {item}" for i, item in enumerate(answers, start=1)))
+                    sendmessage.sendMessage(fromNo, "Your answers:\n"+'\n '.join(f"{i}. {item}" for i, item in enumerate(answers, start=1)))
 
                     # calculate and send score
                     score = check_results(answers, ['C', 'A', 'D', 'C', 'C', 'A', 'D', 'C', 'D', 'A', 'B', 'C', 'A', 'D', 'C', 'C', 'A', 'C', 'A', 'B'])
