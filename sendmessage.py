@@ -32,5 +32,7 @@ def sendMessage(toNumber, message):
     response = requests.post(url=url, data=payload, auth=HTTPBasicAuth(EXOTEL_KEY, EXOTEL_TOKEN))
     print(response)
 
+# def sendImage(toNumber, filepath)
+
 if __name__ == '__main__':
     sendMessage("+919145339332", "python hello")

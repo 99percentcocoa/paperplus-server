@@ -9,6 +9,7 @@ import json
 import threading
 import image
 import cv2
+import omr_detection
 from pathlib import Path
 
 load_dotenv()
@@ -75,11 +76,15 @@ def handle_message(data):
 
                 sendmessage.sendMessage(fromNo, "Processing...")
 
-                scanned_tags = apriltags.detect_tags(filepath)
-                print(f"Detected tags: {list(map(lambda x:x.tag_id, scanned_tags))}")
-                if (len(scanned_tags) == 4):
-                    # dewarp the image and save the dewarped image
-                    dewarped_img = image.dewarp_omr(filepath, scanned_tags)
+                corner_tags = apriltags.detect_tags_36h11(filepath)
+                print(f"Detected tags: {list(map(lambda x:x.tag_id, corner_tags))}")
+
+                # corner tags (36h11) should be 1, 2, 3, 4
+                # question tags (25h9) should be 1, 2, 3, ..., 10
+                if (len(corner_tags) == 4):
+                    # dewarp the image and save the dewarped image. Also preprocess it.
+                    dewarped_img = image.preprocess(image.dewarp_omr(filepath, corner_tags))
+                    debug_img = dewarped_img.copy()
                     print("Dewarped image.")
                     dewarped_filename = f"{Path(filepath).stem}_dewarped.jpg"
                     dewarped_filepath = os.path.join(DEWARPED_DIR, dewarped_filename)
@@ -88,26 +93,53 @@ def handle_message(data):
                     cv2.imwrite(dewarped_filepath, dewarped_img)
                     print(f"Saved dewarped image to {dewarped_filepath}")
 
-                    # split image into left half and right half
-                    dewarped_left, dewarped_right = image.split_img(dewarped_img)
+                    # # split image into left half and right half
+                    # dewarped_left, dewarped_right = image.split_img(dewarped_img)
 
-                    # send the image to gemini, and send back the results
-                    results_left = gemini.scanImage(dewarped_left)['marked_answers']
-                    print(f"Left results: {results_left}")
-                    results_right = gemini.scanImage(dewarped_right)['marked_answers']
-                    print(f"Right results: {results_right}")
-                    results_combined = [val for pair in zip(results_left, results_right) for val in pair]
-                    print(f"Combined results: {results_combined}")
+                    # # send the image to gemini, and send back the results
+                    # results_left = gemini.scanImage(dewarped_left)['marked_answers']
+                    # print(f"Left results: {results_left}")
+                    # results_right = gemini.scanImage(dewarped_right)['marked_answers']
+                    # print(f"Right results: {results_right}")
+                    # results_combined = [val for pair in zip(results_left, results_right) for val in pair]
+                    # print(f"Combined results: {results_combined}")
 
-                    # send message with reply
-                    sendmessage.sendMessage(fromNo, ', '.join(f"{i}. {item}" for i, item in enumerate(results_combined, start=1)))
+                    # # send message with reply
+                    # sendmessage.sendMessage(fromNo, ', '.join(f"{i}. {item}" for i, item in enumerate(results_combined, start=1)))
 
                     # calculate and send score
-                    score = check_results(results_combined, ['C', 'A', 'D', 'C', 'C', 'A', 'D', 'C', 'D', 'A', 'B', 'C', 'A', 'D', 'C', 'C', 'A', 'C', 'A', 'B'])
+                    # score = check_results(results_combined, ['C', 'A', 'D', 'C', 'C', 'A', 'D', 'C', 'D', 'A', 'B', 'C', 'A', 'D', 'C', 'C', 'A', 'C', 'A', 'B'])
+
+                    # detect the 25h9 tags
+                    detection_25h9 = apriltags.detect_tags_25h9(dewarped_img)
+                    tag_points = list(map(lambda t: tuple(map(int, t.center.tolist())), detection_25h9))
+
+                    answers = []
+
+                    for i, point in enumerate(tag_points):
+                        # print(f"In point {i+1}.")
+                        q_left_ans = omr_detection.detect_bubble(dewarped_img, point, omr_detection.LEFT_QUESTION_ROI, debug_img)
+                        q_right_ans = omr_detection.detect_bubble(dewarped_img, point, omr_detection.RIGHT_QUESTION_ROI, debug_img)
+                        answers.extend([q_left_ans, q_right_ans])
+                        # print(f"Q{i*2+1}: {q_left_ans}")
+                        # print(f"Q{i*2+2}: {q_right_ans}")
+                
+                    print(answers)
+
+                    # save debug image
+                    debug_filepath = f'debug/debug_{Path(filepath).stem}.jpg'
+                    cv2.imwrite(debug_filepath, debug_img)
+
+                    # send message with reply
+                    sendmessage.sendMessage(fromNo, ', '.join(f"{i}. {item}" for i, item in enumerate(answers, start=1)))
+
+                    # calculate and send score
+                    score = check_results(answers, ['C', 'A', 'D', 'C', 'C', 'A', 'D', 'C', 'D', 'A', 'B', 'C', 'A', 'D', 'C', 'C', 'A', 'C', 'A', 'B'])
+
                     sendmessage.sendMessage(fromNo, score)
 
                     # log successful scan to google sheet
-                    log_to_sheet(fromNo, fileURL, dewarpedURL, json.dumps(results_combined), score)
+                    log_to_sheet(fromNo, fileURL, dewarpedURL, json.dumps(answers), score)
                 else:
                     sendmessage.sendMessage(fromNo, "Please take a complete photo of the image. ⟳")
 
