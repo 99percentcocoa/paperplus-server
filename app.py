@@ -22,17 +22,19 @@ SHEETS_LOGGING_URL = os.getenv("SHEETS_LOGGING_URL")
 
 DOWNLOADS_PATH = os.getenv("DOWNLOADS_PATH")
 DEWARPED_PATH = os.getenv("DEWARPED_PATH")
+DEBUG_PATH = os.getenv("DEBUG_PATH")
 SERVER_IP = os.getenv("SERVER_IP")
 
-def log_to_sheet(sender, fileURL, dewarpedURL, marked, score):
+def log_to_sheet(sender, fileURL, debugURL, marked, score):
     payload = {
         "sender": sender,
         "fileURL": fileURL,
-        "dewarpedURL": dewarpedURL,
+        "debugURL": debugURL,
         "marked": marked,
         "score": score
     }
-    requests.post(SHEETS_LOGGING_URL, json=payload)
+    print(f"Payload: {payload}")
+    requests.post(SHEETS_LOGGING_URL, json=payload, headers={"Content-Type": "application/json"})
 
 def handle_message(data):
     try:
@@ -65,7 +67,7 @@ def handle_message(data):
                 r = requests.get(url, stream=True, timeout=30)
                 ext = r.headers.get("Content-Type", "image/jpeg").split("/")[-1]
                 filename = f"{message.get('from','unknown')[1:]}_{int(time.time())}.{ext}"
-                fileURL = f"http://{SERVER_IP}:3000/{filename}"
+                fileURL = f"http://{SERVER_IP}:3000/files/{filename}"
 
                 filepath = os.path.join(SAVE_DIR, filename)
                 with open(filepath, "wb") as f:
@@ -88,7 +90,7 @@ def handle_message(data):
                     print("Dewarped image.")
                     dewarped_filename = f"{Path(filepath).stem}_dewarped.jpg"
                     dewarped_filepath = os.path.join(DEWARPED_DIR, dewarped_filename)
-                    dewarpedURL = f"http://{SERVER_IP}:3000/{dewarped_filename}"
+                    # dewarpedURL = f"http://{SERVER_IP}:3000/dewarped/{dewarped_filename}"
 
                     cv2.imwrite(dewarped_filepath, dewarped_img)
                     print(f"Saved dewarped image to {dewarped_filepath}")
@@ -127,8 +129,10 @@ def handle_message(data):
                     print(answers)
 
                     # save debug image
-                    debug_filepath = f'debug/debug_{Path(filepath).stem}.jpg'
+                    debug_filename = f'debug_{Path(filepath).stem}.jpg'
+                    debug_filepath = os.path.join(DEBUG_PATH, debug_filename)
                     cv2.imwrite(debug_filepath, debug_img)
+                    debugURL = f"http://{SERVER_IP}:3000/debug/{debug_filename}"
 
                     # send message with reply
                     sendmessage.sendMessage(fromNo, "Your answers:\n"+'\n '.join(f"{i}. {item}" for i, item in enumerate(answers, start=1)))
@@ -139,7 +143,8 @@ def handle_message(data):
                     sendmessage.sendMessage(fromNo, score)
 
                     # log successful scan to google sheet
-                    log_to_sheet(fromNo, fileURL, dewarpedURL, json.dumps(answers), score)
+                    print(f"Logging {fromNo}, {fileURL}, {debugURL}, {json.dumps(answers)}, {score}")
+                    log_to_sheet(fromNo, fileURL, debugURL, json.dumps(answers), score)
                 else:
                     sendmessage.sendMessage(fromNo, "Please take a complete photo of the image. ⟳")
 
@@ -186,11 +191,11 @@ def serve_file(filename):
     except FileNotFoundError:
         abort(404)
 
-# serve files from dewarped
-@app.route('/dewarped/<path:filename>')
-def serve_dewarped_file(filename):
+# serve files from debug
+@app.route('/debug/<path:filename>')
+def serve_debug_file(filename):
     try:
-        return send_from_directory(DEWARPED_PATH, filename, as_attachment=False)
+        return send_from_directory(DEBUG_PATH, filename, as_attachment=False)
     except FileNotFoundError:
         abort(404)
 
