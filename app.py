@@ -219,7 +219,7 @@ def serve_debug_file(filename):
         abort(404)
 
 # serve files from checked
-@app.route('/checked/<path:filename>')
+@app.route('/checked/<path:filename>', methods=['GET', 'POST'])
 def serve_checked_file(filename):
     try:
         return send_from_directory(CHECKED_PATH, filename, as_attachment=False)

@@ -33,6 +33,7 @@ def sendMessage(toNumber, message):
     print(response)
 
 def sendImage(toNumber, url):
+    print(f"Sending image {url} to {toNumber}")
     payload = json.dumps({
         "whatsapp": {
             "messages": [
@@ -43,15 +44,18 @@ def sendImage(toNumber, url):
                         "type": "image",
                         "image": {
                             "link": url,
-                            "caption": ""
+                            "caption": "Your answers."
                         }
                     }
                 }
             ]
         }
     })
+    headers = {
+        'Content-Type': 'application/json'
+    }
 
-    response = requests.post(url=url, data=payload, auth=HTTPBasicAuth(EXOTEL_KEY, EXOTEL_TOKEN))
+    response = requests.post(url=url, data=payload, headers=headers, auth=HTTPBasicAuth(EXOTEL_KEY, EXOTEL_TOKEN))
     print(response)
 
 if __name__ == '__main__':
