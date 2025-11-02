@@ -32,7 +32,27 @@ def sendMessage(toNumber, message):
     response = requests.post(url=url, data=payload, auth=HTTPBasicAuth(EXOTEL_KEY, EXOTEL_TOKEN))
     print(response)
 
-# def sendImage(toNumber, filepath)
+def sendImage(toNumber, url):
+    payload = json.dumps({
+        "whatsapp": {
+            "messages": [
+                {
+                    "from": "+912071173227",
+                    "to": toNumber,
+                    "content": {
+                        "type": "image",
+                        "image": {
+                            "link": url,
+                            "caption": ""
+                        }
+                    }
+                }
+            ]
+        }
+    })
+
+    response = requests.post(url=url, data=payload, auth=HTTPBasicAuth(EXOTEL_KEY, EXOTEL_TOKEN))
+    print(response)
 
 if __name__ == '__main__':
     sendMessage("+919145339332", "python hello")

@@ -48,7 +48,7 @@ def show_roi_zones(image, points, debug_image):
 
 # function to detect filled bubble given anchor point and roi (either LEFT or RIGHT)
 # will return: 'A', 'B', 'C', 'D' or '' (when none is selected or multiple are selected)
-def detect_bubble(image, anchor, roi, debug_image):
+def detect_bubble(image, anchor, roi, debug_image, checked_image, ans_key):
     (rx, ry, rw, rh) = roi
     (anchor_x, anchor_y) = anchor
 
@@ -125,14 +125,34 @@ def detect_bubble(image, anchor, roi, debug_image):
     # cv2.imwrite('q_detected.jpg', debug_crop)
 
     if not filled_index:
-        # print("No bubble detected as filled.")
+        print("No bubble detected as filled.")
+
+        # draw red box in checked image and write "-1" near top-right
+        cv2.rectangle(checked_image, (x1, y1), (x2, y2), (86, 86, 255), 2)
+        cv2.putText(checked_image, "+0", (x1 + rw - 5, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 5, cv2.LINE_AA)
+
         return ''
     elif len(filled_index) > 1:
-        # print("Multiple bubbles detected.")
+        print("Multiple bubbles detected.")
+
+        # draw red box in checked image and write "-1" near top-right
+        cv2.rectangle(checked_image, (x1, y1), (x2, y2), (86, 86, 255), 2)
+        cv2.putText(checked_image, "+0", (x1 + rw - 5, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 5, cv2.LINE_AA)
+
         return ''
     else:
         ans = chr(65+filled_index[0])
-        # print(f"Detected bubble: {ans}")
+        print(f"Detected bubble: {ans}, correct ans: {ans_key}")
+        if ans.lower() == ans_key.lower():
+            print("Correct ans.")
+            # correct ans
+            # draw green box in checked image and write "+1" near top-right
+            cv2.rectangle(checked_image, (x1, y1), (x2, y2), (0, 127, 0), 2)
+            cv2.putText(checked_image, "+1", (x1 + rw - 5, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 127, 0), 5, cv2.LINE_AA)
+        else:
+            # wrong ans
+            cv2.rectangle(checked_image, (x1, y1), (x2, y2), (0, 0, 255), 2)
+            cv2.putText(checked_image, "+0", (x1 + rw - 5, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 5, cv2.LINE_AA)
         return ans
 
 if __name__ == "__main__":
@@ -144,6 +164,7 @@ if __name__ == "__main__":
     # detect 25h9 tags
     detection = apriltags.detect_tags_25h9(preprocessed_image)
     tag_points = list(map(lambda t: tuple(map(int, t.center.tolist())), detection))
+    tag_points.sort(key = lambda d: d[1])
     print(f"tag points: {tag_points}")
 
     show_roi_zones(preprocessed_image, tag_points, debug_image)

@@ -23,6 +23,7 @@ SHEETS_LOGGING_URL = os.getenv("SHEETS_LOGGING_URL")
 DOWNLOADS_PATH = os.getenv("DOWNLOADS_PATH")
 DEWARPED_PATH = os.getenv("DEWARPED_PATH")
 DEBUG_PATH = os.getenv("DEBUG_PATH")
+CHECKED_PATH = os.getenv("CHECKED_PATH")
 SERVER_IP = os.getenv("SERVER_IP")
 
 def log_to_sheet(sender, fileURL, debugURL, marked, score):
@@ -88,6 +89,10 @@ def handle_message(data):
                     dewarped_img = image.preprocess(image.dewarp_omr(filepath, corner_tags))
                     debug_img = dewarped_img.copy()
                     print("Dewarped image.")
+
+                    # checked image
+                    checked_img = dewarped_img.copy()
+
                     dewarped_filename = f"{Path(filepath).stem}_dewarped.jpg"
                     dewarped_filepath = os.path.join(DEWARPED_DIR, dewarped_filename)
                     # dewarpedURL = f"http://{SERVER_IP}:3000/dewarped/{dewarped_filename}"
@@ -116,12 +121,16 @@ def handle_message(data):
                     detection_25h9 = apriltags.detect_tags_25h9(dewarped_img)
                     tag_points = list(map(lambda t: tuple(map(int, t.center.tolist())), detection_25h9))
 
+                    ans_key = ['C', 'A', 'D', 'C', 'C', 'A', 'D', 'C', 'D', 'A', 'B', 'C', 'A', 'D', 'C', 'C', 'A', 'C', 'A', 'B']
                     answers = []
 
                     for i, point in enumerate(tag_points):
                         # print(f"In point {i+1}.")
-                        q_left_ans = omr_detection.detect_bubble(dewarped_img, point, omr_detection.LEFT_QUESTION_ROI, debug_img)
-                        q_right_ans = omr_detection.detect_bubble(dewarped_img, point, omr_detection.RIGHT_QUESTION_ROI, debug_img)
+                        q_left_ans_key = q_left_ans_key = ans_key[i*2]
+                        q_left_ans = omr_detection.detect_bubble(dewarped_img, point, omr_detection.LEFT_QUESTION_ROI, debug_img, checked_img, q_left_ans_key)
+
+                        q_right_ans_key = ans_key[i*2+1]
+                        q_right_ans = omr_detection.detect_bubble(dewarped_img, point, omr_detection.RIGHT_QUESTION_ROI, debug_img, checked_img, q_right_ans_key)
                         answers.extend([q_left_ans, q_right_ans])
                         # print(f"Q{i*2+1}: {q_left_ans}")
                         # print(f"Q{i*2+2}: {q_right_ans}")
@@ -132,15 +141,25 @@ def handle_message(data):
                     debug_filename = f'debug_{Path(filepath).stem}.jpg'
                     debug_filepath = os.path.join(DEBUG_PATH, debug_filename)
                     cv2.imwrite(debug_filepath, debug_img)
+
+                    # save checked image
+                    checked_filename = f'checked_{Path(filepath).stem}.jpg'
+                    checked_filepath = os.path.join(CHECKED_PATH, checked_filename)
+                    checked_URL = f"http://{SERVER_IP}:3000/checked/{checked_filename}"
+                    cv2.imwrite(checked_filepath, checked_img)
+
                     debugURL = f"http://{SERVER_IP}:3000/debug/{debug_filename}"
 
                     # send message with reply
                     sendmessage.sendMessage(fromNo, "Your answers:\n"+'\n '.join(f"{i}. {item}" for i, item in enumerate(answers, start=1)))
-
                     # calculate and send score
-                    score = check_results(answers, ['C', 'A', 'D', 'C', 'C', 'A', 'D', 'C', 'D', 'A', 'B', 'C', 'A', 'D', 'C', 'C', 'A', 'C', 'A', 'B'])
+                    score = check_results(answers, ans_key)
 
                     sendmessage.sendMessage(fromNo, score)
+
+                    # send visual checked paper
+                    print("Sending checked image.")
+                    sendmessage.sendImage(fromNo, checked_URL)
 
                     # log successful scan to google sheet
                     print(f"Logging {fromNo}, {fileURL}, {debugURL}, {json.dumps(answers)}, {score}")
@@ -196,6 +215,14 @@ def serve_file(filename):
 def serve_debug_file(filename):
     try:
         return send_from_directory(DEBUG_PATH, filename, as_attachment=False)
+    except FileNotFoundError:
+        abort(404)
+
+# serve files from checked
+@app.route('/checked/<path:filename>')
+def serve_checked_file(filename):
+    try:
+        return send_from_directory(CHECKED_PATH, filename, as_attachment=False)
     except FileNotFoundError:
         abort(404)
 
