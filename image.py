@@ -9,24 +9,15 @@ def dewarp_omr(filepath, tags):
     image = cv2.imread(filepath)
     
     if len(tags) != 4:
-        print("Less than 4 tags detected.")
+        print("Less/more than 4 tags detected.")
         return []
+    
+    corner_tags = {d.tag_id: d.center for d in tags}
 
-    tag_centers = []
-    for t in tags:
-        tag_centers.append(t.center)
-    print(tag_centers)
-
-    source_pts = np.array(tag_centers, dtype="float32")
-    # 1. Sort by sum: Find Top-Left (min sum) and Bottom-Right (max sum)
-    s = source_pts.sum(axis=1)
-    tl = source_pts[np.argmin(s)]
-    br = source_pts[np.argmax(s)]
-
-    # 2. Sort by difference: Find Top-Right (min diff) and Bottom-Left (max diff)
-    d = np.diff(source_pts, axis=1)
-    tr = source_pts[np.argmin(d)]
-    bl = source_pts[np.argmax(d)]
+    tl = corner_tags[1]
+    tr = corner_tags[2]
+    bl = corner_tags[3]
+    br = corner_tags[4]
     
     # Re-order the final source points: TL, TR, BR, BL
     # This is the essential input for cv2.getPerspectiveTransform
