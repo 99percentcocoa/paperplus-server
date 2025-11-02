@@ -44,7 +44,7 @@ def show_roi_zones(image, points, debug_image):
         cv2.rectangle(debug_image, (right_x1, right_y1), (right_x2, right_y2), (255, 0, 0), 2)
     
     # save image
-    cv2.imwrite('debug_roi.jpg', debug_image)
+    # cv2.imwrite('debug_roi.jpg', debug_image)
 
 # function to detect filled bubble given anchor point and roi (either LEFT or RIGHT)
 # will return: 'A', 'B', 'C', 'D' or '' (when none is selected or multiple are selected)
@@ -62,19 +62,19 @@ def detect_bubble(image, anchor, roi, debug_image):
     # left_zone_roi = thresh[y1:y2, x1:x2]
 
     q_crop = image[y1:y2, x1:x2]
-    cv2.imwrite('q_crop.jpg', q_crop)
+    # cv2.imwrite('q_crop.jpg', q_crop)
 
     gray_crop = cv2.cvtColor(q_crop, cv2.COLOR_BGR2GRAY)
     gray_norm = cv2.normalize(gray_crop, None, 0, 255, cv2.NORM_MINMAX)
     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
     enhanced = clahe.apply(gray_norm)
-    cv2.imwrite('q_crop_enhanced.jpg', enhanced)
+    # cv2.imwrite('q_crop_enhanced.jpg', enhanced)
 
     blur = cv2.GaussianBlur(gray_crop, (5,5), 0)
     _, thresh = cv2.threshold(
         blur, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU
     )
-    cv2.imwrite("q_thresh.jpg", thresh)
+    # cv2.imwrite("q_thresh.jpg", thresh)
 
     # Contour Detection
     contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -122,7 +122,7 @@ def detect_bubble(image, anchor, roi, debug_image):
                     (x1 + x, y1 + y - 5),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1, cv2.LINE_AA)
 
-    cv2.imwrite('q_detected.jpg', debug_crop)
+    # cv2.imwrite('q_detected.jpg', debug_crop)
 
     if not filled_index:
         # print("No bubble detected as filled.")

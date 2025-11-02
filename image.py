@@ -81,7 +81,7 @@ def preprocess(img):
     # bilateral = cv2.bilateralFilter(enhanced, 9, 75, 75)
     # cv2.imwrite('clean_bilateral.jpg', bilateral)
 
-    cv2.imwrite("clean_preprocessed.jpg", color_img)
+    # cv2.imwrite("clean_preprocessed.jpg", color_img)
     return color_img
 
 if __name__ == "__main__":
