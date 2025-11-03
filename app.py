@@ -117,58 +117,82 @@ def handle_message(data):
                     # calculate and send score
                     # score = check_results(results_combined, ['C', 'A', 'D', 'C', 'C', 'A', 'D', 'C', 'D', 'A', 'B', 'C', 'A', 'D', 'C', 'C', 'A', 'C', 'A', 'B'])
 
-                    # detect the 25h9 tags
-                    detection_25h9 = apriltags.detect_tags_25h9(dewarped_img)
-                    tag_points = list(map(lambda t: tuple(map(int, t.center.tolist())), detection_25h9))
-                    print(f"Detected tags: {tag_points}")
-
                     ans_key = ['C', 'A', 'D', 'C', 'C', 'A', 'D', 'C', 'D', 'A', 'B', 'C', 'A', 'D', 'C', 'C', 'A', 'C', 'A', 'B']
                     answers = []
 
-                    for i, point in enumerate(tag_points):
-                        # print(f"In point {i+1}.")
-                        q_left_ans_key = q_left_ans_key = ans_key[i*2]
-                        q_left_ans = omr_detection.detect_bubble(dewarped_img, point, omr_detection.LEFT_QUESTION_ROI, debug_img, checked_img, q_left_ans_key)
+                    # detect the 25h9 tags
+                    detection_25h9 = apriltags.detect_tags_25h9(dewarped_img)
+                    detected_tags_25h9 = list(map(lambda x:x.tag_id, detection_25h9))
+                    print(f"Detected tags: {detected_tags_25h9}")
 
-                        q_right_ans_key = ans_key[i*2+1]
-                        q_right_ans = omr_detection.detect_bubble(dewarped_img, point, omr_detection.RIGHT_QUESTION_ROI, debug_img, checked_img, q_right_ans_key)
-                        answers.extend([q_left_ans, q_right_ans])
-                        print(f"Q{i*2+1}: {q_left_ans}")
-                        print(f"Q{i*2+2}: {q_right_ans}")
-                        
-                    print("Finished checking.")
-                
-                    print(answers)
+                    # verify 25h9 tags detection
+                    required = set(range(1, 11))
+                    present = set(detected_tags_25h9)
 
-                    # save debug image
-                    debug_filename = f'debug_{Path(filepath).stem}.jpg'
-                    debug_filepath = os.path.join(DEBUG_PATH, debug_filename)
-                    cv2.imwrite(debug_filepath, debug_img)
-                    print(f"Saved debug image at {debug_filepath}")
+                    if not required.issubset(present):
+                        missing = required - present
+                        print(f"Missing 25h9 tags: {missing}")
 
-                    # save checked image
-                    checked_filename = f'checked_{Path(filepath).stem}.jpg'
-                    checked_filepath = os.path.join(CHECKED_PATH, checked_filename)
-                    checked_URL = f"http://{SERVER_IP}:3000/checked/{checked_filename}"
-                    cv2.imwrite(checked_filepath, checked_img)
-                    print(f"Saved checked image at {checked_filepath}.")
+                        # 25h9 tags are missing, ask user to send image again.
+                        sendmessage.sendMessage(fromNo, "Please try again. ⟳")
+                    else:
+                        extra = present - required
+                        print(f"Extra tags detected: {extra}")
+                        if extra:
+                            # extra tags, remove them and continue
+                            detection_25h9[:] = [d for d in detection_25h9 if d.tag_id not in list(extra)]
+                            detected_tags_25h9 = list(map(lambda x:x.tag_id, detection_25h9))
+                            
+                            print(f"Extra tags removed, new list: {detected_tags_25h9}")
+                        else:
+                            # all tags correct
+                            print("All 25h9 tags are correct.")
 
-                    debugURL = f"http://{SERVER_IP}:3000/debug/{debug_filename}"
+                        tag_points = list(map(lambda t: tuple(map(int, t.center.tolist())), detection_25h9))
+                        for i, point in enumerate(tag_points):
+                            # print(f"In point {i+1}.")
+                            q_left_ans_key = q_left_ans_key = ans_key[i*2]
+                            q_left_ans = omr_detection.detect_bubble(dewarped_img, point, omr_detection.LEFT_QUESTION_ROI, debug_img, checked_img, q_left_ans_key)
 
-                    # send message with reply
-                    # sendmessage.sendMessage(fromNo, "Your answers:\n"+'\n '.join(f"{i}. {item}" for i, item in enumerate(answers, start=1)))
-                    # calculate and send score
-                    score = check_results(answers, ans_key)
+                            q_right_ans_key = ans_key[i*2+1]
+                            q_right_ans = omr_detection.detect_bubble(dewarped_img, point, omr_detection.RIGHT_QUESTION_ROI, debug_img, checked_img, q_right_ans_key)
+                            answers.extend([q_left_ans, q_right_ans])
+                            print(f"Q{i*2+1}: {q_left_ans}")
+                            print(f"Q{i*2+2}: {q_right_ans}")
+                            
+                        print("Finished checking.")
+                    
+                        print(answers)
 
-                    sendmessage.sendMessage(fromNo, score)
+                        # save debug image
+                        debug_filename = f'debug_{Path(filepath).stem}.jpg'
+                        debug_filepath = os.path.join(DEBUG_PATH, debug_filename)
+                        cv2.imwrite(debug_filepath, debug_img)
+                        print(f"Saved debug image at {debug_filepath}")
 
-                    # send visual checked paper
-                    print("Sending checked image.")
-                    sendmessage.sendImage(fromNo, checked_URL)
+                        # save checked image
+                        checked_filename = f'checked_{Path(filepath).stem}.jpg'
+                        checked_filepath = os.path.join(CHECKED_PATH, checked_filename)
+                        checked_URL = f"http://{SERVER_IP}:3000/checked/{checked_filename}"
+                        cv2.imwrite(checked_filepath, checked_img)
+                        print(f"Saved checked image at {checked_filepath}.")
 
-                    # log successful scan to google sheet
-                    print(f"Logging {fromNo}, {fileURL}, {debugURL}, {json.dumps(answers)}, {score}")
-                    log_to_sheet(fromNo, fileURL, debugURL, json.dumps(answers), score)
+                        debugURL = f"http://{SERVER_IP}:3000/debug/{debug_filename}"
+
+                        # send message with reply
+                        # sendmessage.sendMessage(fromNo, "Your answers:\n"+'\n '.join(f"{i}. {item}" for i, item in enumerate(answers, start=1)))
+                        # calculate and send score
+                        score = check_results(answers, ans_key)
+
+                        sendmessage.sendMessage(fromNo, score)
+
+                        # send visual checked paper
+                        print("Sending checked image.")
+                        sendmessage.sendImage(fromNo, checked_URL)
+
+                        # log successful scan to google sheet
+                        print(f"Logging {fromNo}, {fileURL}, {debugURL}, {json.dumps(answers)}, {score}")
+                        log_to_sheet(fromNo, fileURL, debugURL, json.dumps(answers), score)
                 else:
                     sendmessage.sendMessage(fromNo, "Please take a complete photo of the image. ⟳")
 
