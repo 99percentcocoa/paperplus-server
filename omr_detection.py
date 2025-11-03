@@ -152,7 +152,10 @@ def detect_bubble(image, anchor, roi, debug_image, checked_image, ans_key):
         else:
             # wrong ans
             cv2.rectangle(checked_image, (x1, y1), (x2, y2), (0, 0, 255), 2)
+            # debug
+            print("Wrong ans: drew rectangle.")
             cv2.putText(checked_image, "+0", (x1 + rw - 5, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 5, cv2.LINE_AA)
+            print("Wrong ans: wrote +0.")
         return ans
 
 if __name__ == "__main__":

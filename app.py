@@ -120,6 +120,7 @@ def handle_message(data):
                     # detect the 25h9 tags
                     detection_25h9 = apriltags.detect_tags_25h9(dewarped_img)
                     tag_points = list(map(lambda t: tuple(map(int, t.center.tolist())), detection_25h9))
+                    print(f"Detected tags: {tag_points}")
 
                     ans_key = ['C', 'A', 'D', 'C', 'C', 'A', 'D', 'C', 'D', 'A', 'B', 'C', 'A', 'D', 'C', 'C', 'A', 'C', 'A', 'B']
                     answers = []
@@ -132,8 +133,10 @@ def handle_message(data):
                         q_right_ans_key = ans_key[i*2+1]
                         q_right_ans = omr_detection.detect_bubble(dewarped_img, point, omr_detection.RIGHT_QUESTION_ROI, debug_img, checked_img, q_right_ans_key)
                         answers.extend([q_left_ans, q_right_ans])
-                        # print(f"Q{i*2+1}: {q_left_ans}")
-                        # print(f"Q{i*2+2}: {q_right_ans}")
+                        print(f"Q{i*2+1}: {q_left_ans}")
+                        print(f"Q{i*2+2}: {q_right_ans}")
+                        
+                    print("Finished checking.")
                 
                     print(answers)
 
@@ -141,12 +144,14 @@ def handle_message(data):
                     debug_filename = f'debug_{Path(filepath).stem}.jpg'
                     debug_filepath = os.path.join(DEBUG_PATH, debug_filename)
                     cv2.imwrite(debug_filepath, debug_img)
+                    print(f"Saved debug image at {debug_filepath}")
 
                     # save checked image
                     checked_filename = f'checked_{Path(filepath).stem}.jpg'
                     checked_filepath = os.path.join(CHECKED_PATH, checked_filename)
                     checked_URL = f"http://{SERVER_IP}:3000/checked/{checked_filename}"
                     cv2.imwrite(checked_filepath, checked_img)
+                    print(f"Saved checked image at {checked_filepath}.")
 
                     debugURL = f"http://{SERVER_IP}:3000/debug/{debug_filename}"
 
