@@ -151,7 +151,7 @@ def handle_message(data):
                     debugURL = f"http://{SERVER_IP}:3000/debug/{debug_filename}"
 
                     # send message with reply
-                    sendmessage.sendMessage(fromNo, "Your answers:\n"+'\n '.join(f"{i}. {item}" for i, item in enumerate(answers, start=1)))
+                    # sendmessage.sendMessage(fromNo, "Your answers:\n"+'\n '.join(f"{i}. {item}" for i, item in enumerate(answers, start=1)))
                     # calculate and send score
                     score = check_results(answers, ans_key)
 

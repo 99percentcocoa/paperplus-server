@@ -9,7 +9,7 @@ EXOTEL_KEY = os.getenv("EXOTEL_KEY")
 EXOTEL_TOKEN = os.getenv("EXOTEL_TOKEN")
 EXOTEL_SUBDOMAIN = os.getenv("EXOTEL_SUBDOMAIN")
 
-url = f'https://{EXOTEL_KEY}:{EXOTEL_TOKEN}@{EXOTEL_SUBDOMAIN}/v2/accounts/{EXOTEL_SID}/messages'
+api_url = f'https://{EXOTEL_KEY}:{EXOTEL_TOKEN}@{EXOTEL_SUBDOMAIN}/v2/accounts/{EXOTEL_SID}/messages'
 
 def sendMessage(toNumber, message):
     payload = json.dumps({
@@ -29,11 +29,11 @@ def sendMessage(toNumber, message):
         }
     })
 
-    response = requests.post(url=url, data=payload, auth=HTTPBasicAuth(EXOTEL_KEY, EXOTEL_TOKEN))
-    print(response)
+    response = requests.post(url=api_url, data=payload, auth=HTTPBasicAuth(EXOTEL_KEY, EXOTEL_TOKEN))
+    print(response.content)
 
-def sendImage(toNumber, url):
-    print(f"Sending image {url} to {toNumber}")
+def sendImage(toNumber, img_url):
+    print(f"Sending image {img_url} to {toNumber}")
     payload = json.dumps({
         "whatsapp": {
             "messages": [
@@ -43,7 +43,7 @@ def sendImage(toNumber, url):
                     "content": {
                         "type": "image",
                         "image": {
-                            "link": url,
+                            "link": img_url,
                             "caption": "Your answers."
                         }
                     }
@@ -55,8 +55,8 @@ def sendImage(toNumber, url):
         'Content-Type': 'application/json'
     }
 
-    response = requests.post(url=url, data=payload, headers=headers, auth=HTTPBasicAuth(EXOTEL_KEY, EXOTEL_TOKEN))
-    print(response)
+    response = requests.post(url=api_url, data=payload, headers=headers, auth=HTTPBasicAuth(EXOTEL_KEY, EXOTEL_TOKEN))
+    print(response.content)
 
 if __name__ == '__main__':
     sendMessage("+919145339332", "python hello")
