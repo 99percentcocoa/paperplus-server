@@ -26,11 +26,12 @@ DEBUG_PATH = os.getenv("DEBUG_PATH")
 CHECKED_PATH = os.getenv("CHECKED_PATH")
 SERVER_IP = os.getenv("SERVER_IP")
 
-def log_to_sheet(sender, fileURL, debugURL, marked, score):
+def log_to_sheet(sender, fileURL, debugURL, checkedURL, marked, score):
     payload = {
         "sender": sender,
         "fileURL": fileURL,
         "debugURL": debugURL,
+        "checkedURL": checkedURL,
         "marked": marked,
         "score": score
     }
@@ -192,17 +193,17 @@ def handle_message(data):
 
                         # log successful scan to google sheet
                         print(f"Logging {fromNo}, {fileURL}, {debugURL}, {json.dumps(answers)}, {score}")
-                        log_to_sheet(fromNo, fileURL, debugURL, json.dumps(answers), score)
+                        log_to_sheet(fromNo, fileURL, debugURL, checked_URL, json.dumps(answers), score)
                 else:
                     sendmessage.sendMessage(fromNo, "Please take a complete photo of the image. ⟳")
 
                     # log failed scan to google sheet
-                    log_to_sheet(fromNo, fileURL, "", "failed", "")
+                    log_to_sheet(fromNo, fileURL, "", "", "failed", "")
             else:
                 sendmessage.sendMessage(fromNo, "Please send an image of a scanned worksheet.")
 
                 # log failed scan (user message does not contain image) to google sheet
-                log_to_sheet(fromNo, "none", "", "failed", "")
+                log_to_sheet(fromNo, "none", "", "", "failed", "")
     except Exception as e:
         print("Error in background thread: ", e)
 
