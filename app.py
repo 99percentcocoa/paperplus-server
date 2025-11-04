@@ -2,7 +2,6 @@ from dotenv import load_dotenv
 import os
 from flask import Flask, request, send_from_directory, abort
 import os, requests, time
-import gemini
 import sendmessage
 import apriltags
 import json
@@ -96,27 +95,9 @@ def handle_message(data):
 
                     dewarped_filename = f"{Path(filepath).stem}_dewarped.jpg"
                     dewarped_filepath = os.path.join(DEWARPED_DIR, dewarped_filename)
-                    # dewarpedURL = f"http://{SERVER_IP}:3000/dewarped/{dewarped_filename}"
 
                     cv2.imwrite(dewarped_filepath, dewarped_img)
                     print(f"Saved dewarped image to {dewarped_filepath}")
-
-                    # # split image into left half and right half
-                    # dewarped_left, dewarped_right = image.split_img(dewarped_img)
-
-                    # # send the image to gemini, and send back the results
-                    # results_left = gemini.scanImage(dewarped_left)['marked_answers']
-                    # print(f"Left results: {results_left}")
-                    # results_right = gemini.scanImage(dewarped_right)['marked_answers']
-                    # print(f"Right results: {results_right}")
-                    # results_combined = [val for pair in zip(results_left, results_right) for val in pair]
-                    # print(f"Combined results: {results_combined}")
-
-                    # # send message with reply
-                    # sendmessage.sendMessage(fromNo, ', '.join(f"{i}. {item}" for i, item in enumerate(results_combined, start=1)))
-
-                    # calculate and send score
-                    # score = check_results(results_combined, ['C', 'A', 'D', 'C', 'C', 'A', 'D', 'C', 'D', 'A', 'B', 'C', 'A', 'D', 'C', 'C', 'A', 'C', 'A', 'B'])
 
                     ans_key = ['C', 'A', 'D', 'C', 'C', 'A', 'D', 'C', 'D', 'A', 'B', 'C', 'A', 'D', 'C', 'C', 'A', 'C', 'A', 'B']
                     answers = []
