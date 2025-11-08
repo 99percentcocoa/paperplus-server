@@ -2,18 +2,18 @@ import cv2
 import numpy as np
 import image
 import apriltags
+import math
 
 # roi format: (x_offset, y_offset, width, height)
 LEFT_QUESTION_ROI = (75, -40, 475, 85)
 RIGHT_QUESTION_ROI = (602, -40, 475, 85)
 
-MIN_MARK_AREA = 400 # TUNE THIS if needed
-MAX_MARK_AREA = 1000
+MIN_MARK_AREA = 500 # TUNE THIS if needed
+MAX_MARK_AREA = 800
 FILL_THRESHOLD = 0.9
 
-# aspect ratios of the bounding boxes of potential contour candidates
-MIN_CNT_ASPECT_RATIO = 0.7
-MAX_CNT_ASPECT_RATIO = 1.3
+# circularity condition
+MIN_CIRCULARITY = 0.75
 
 # uses globally defined LEFT_QUESTION_ROI and RIGHT_QUESTION_ROI
 def show_roi_zones(image, points, debug_image):
@@ -59,7 +59,6 @@ def detect_bubble(image, anchor, roi, debug_image, checked_image, ans_key):
 
     # draw green rectangle around ROI in debug image
     cv2.rectangle(debug_image, (x1, y1), (x2, y2), (0, 255, 0), 2)
-    # left_zone_roi = thresh[y1:y2, x1:x2]
 
     q_crop = image[y1:y2, x1:x2]
     # cv2.imwrite('q_crop.jpg', q_crop)
@@ -83,10 +82,19 @@ def detect_bubble(image, anchor, roi, debug_image, checked_image, ans_key):
     bubble_candidates = []
     for cnt in contours:
         area = cv2.contourArea(cnt)
+        perimeter = cv2.arcLength(cnt, True)
+        circularity = 4 * math.pi * (area / (perimeter * perimeter))
+
+        # contour checks: 1. area, 2. circularity
+        # if there are still more than 4, check if they are evenly spaced and horizontal, and remove the y outlier (todo)
+
+        # 1. area condition
         if MIN_MARK_AREA < area < MAX_MARK_AREA:
             x, y, w, h = cv2.boundingRect(cnt)
             aspect_ratio = w / float(h)
-            if MIN_CNT_ASPECT_RATIO < aspect_ratio < MAX_CNT_ASPECT_RATIO:
+
+            # 2. circularity condition
+            if circularity > float(MIN_CIRCULARITY):
                 bubble_candidates.append(cnt)
 
     bubble_candidates = sorted(bubble_candidates, key=lambda c: cv2.boundingRect(c)[0])
@@ -95,45 +103,9 @@ def detect_bubble(image, anchor, roi, debug_image, checked_image, ans_key):
     ratios = []
     debug_crop = q_crop.copy()
 
-    for i, cnt in enumerate(bubble_candidates):
-        mask = np.zeros(thresh.shape, dtype=np.uint8)
-        cv2.drawContours(mask, [cnt], -1, 255, -1)
-        total_pixels = cv2.countNonZero(mask)
-        filled_pixels = cv2.countNonZero(cv2.bitwise_and(mask, thresh))
-        fill_ratio = filled_pixels / total_pixels if total_pixels > 0 else 0
-        ratios.append(fill_ratio)
-        # print(f"Bubble {chr(65+i)}: fill_ratio = {fill_ratio:.3f}, area = {cv2.contourArea(cnt)}")
-
-        color = (0, 255, 0)
-        if fill_ratio > FILL_THRESHOLD:
-            color = (255, 0, 0)
-            filled_index.append(i)
-
-        x, y, w, h = cv2.boundingRect(cnt)
-
-        cv2.drawContours(debug_crop, [cnt], -1, color, 2)
-        cv2.putText(debug_crop, f"{chr(65+i)}", (x, y-5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
-
-        # global debug image
-        cnt_global = cnt + np.array([[[x1, y1]]])
-        cv2.drawContours(debug_image, [cnt_global], -1, color, 2)
-        cv2.putText(debug_image, 
-                    f"{chr(65+i)} {fill_ratio:.2f}",
-                    (x1 + x, y1 + y - 5),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1, cv2.LINE_AA)
-
-    # cv2.imwrite('q_detected.jpg', debug_crop)
-
-    if not filled_index:
-        print("No bubble detected as filled.")
-
-        # draw red box in checked image and write "-1" near top-right
-        cv2.rectangle(checked_image, (x1, y1), (x2, y2), (86, 86, 255), 2)
-        cv2.putText(checked_image, "+0", (x1 + rw - 5, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 5, cv2.LINE_AA)
-
-        return ''
-    elif len(filled_index) > 1:
-        print("Multiple bubbles detected.")
+    # if there are more than 4 bubble candidates, return blank ans
+    if len(bubble_candidates) != 4:
+        print(f"{len(bubble_candidates)} bubble candidates instead of 4.")
 
         # draw red box in checked image and write "-1" near top-right
         cv2.rectangle(checked_image, (x1, y1), (x2, y2), (86, 86, 255), 2)
@@ -141,22 +113,68 @@ def detect_bubble(image, anchor, roi, debug_image, checked_image, ans_key):
 
         return ''
     else:
-        ans = chr(65+filled_index[0])
-        print(f"Detected bubble: {ans}, correct ans: {ans_key}")
-        if ans.lower() == ans_key.lower():
-            print("Correct ans.")
-            # correct ans
-            # draw green box in checked image and write "+1" near top-right
-            cv2.rectangle(checked_image, (x1, y1), (x2, y2), (0, 127, 0), 2)
-            cv2.putText(checked_image, "+1", (x1 + rw - 5, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 127, 0), 5, cv2.LINE_AA)
-        else:
-            # wrong ans
-            cv2.rectangle(checked_image, (x1, y1), (x2, y2), (0, 0, 255), 2)
-            # debug
-            print("Wrong ans: drew rectangle.")
+        for i, cnt in enumerate(bubble_candidates):
+            mask = np.zeros(thresh.shape, dtype=np.uint8)
+            cv2.drawContours(mask, [cnt], -1, 255, -1)
+            total_pixels = cv2.countNonZero(mask)
+            filled_pixels = cv2.countNonZero(cv2.bitwise_and(mask, thresh))
+            fill_ratio = filled_pixels / total_pixels if total_pixels > 0 else 0
+            ratios.append(fill_ratio)
+            # print(f"Bubble {chr(65+i)}: fill_ratio = {fill_ratio:.3f}, area = {cv2.contourArea(cnt)}")
+
+            color = (0, 255, 0)
+            if fill_ratio > FILL_THRESHOLD:
+                color = (255, 0, 0)
+                filled_index.append(i)
+
+            x, y, w, h = cv2.boundingRect(cnt)
+
+            cv2.drawContours(debug_crop, [cnt], -1, color, 2)
+            cv2.putText(debug_crop, f"{chr(65+i)}", (x, y-5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
+
+            # global debug image
+            cnt_global = cnt + np.array([[[x1, y1]]])
+            cv2.drawContours(debug_image, [cnt_global], -1, color, 2)
+            cv2.putText(debug_image, 
+                        f"{chr(65+i)} {fill_ratio:.2f}",
+                        (x1 + x, y1 + y - 5),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1, cv2.LINE_AA)
+
+        # cv2.imwrite('q_detected.jpg', debug_crop)
+
+        if not filled_index:
+            print("No bubble detected as filled.")
+
+            # draw red box in checked image and write "-1" near top-right
+            cv2.rectangle(checked_image, (x1, y1), (x2, y2), (86, 86, 255), 2)
             cv2.putText(checked_image, "+0", (x1 + rw - 5, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 5, cv2.LINE_AA)
-            print("Wrong ans: wrote +0.")
-        return ans
+
+            return ''
+        elif len(filled_index) > 1:
+            print("Multiple bubbles detected.")
+
+            # draw red box in checked image and write "-1" near top-right
+            cv2.rectangle(checked_image, (x1, y1), (x2, y2), (86, 86, 255), 2)
+            cv2.putText(checked_image, "+0", (x1 + rw - 5, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 5, cv2.LINE_AA)
+
+            return ''
+        else:
+            ans = chr(65+filled_index[0])
+            print(f"Detected bubble: {ans}, correct ans: {ans_key}")
+            if ans.lower() == ans_key.lower():
+                print("Correct ans.")
+                # correct ans
+                # draw green box in checked image and write "+1" near top-right
+                cv2.rectangle(checked_image, (x1, y1), (x2, y2), (0, 127, 0), 2)
+                cv2.putText(checked_image, "+1", (x1 + rw - 5, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 127, 0), 5, cv2.LINE_AA)
+            else:
+                # wrong ans
+                cv2.rectangle(checked_image, (x1, y1), (x2, y2), (0, 0, 255), 2)
+                # debug
+                print("Wrong ans: drew rectangle.")
+                cv2.putText(checked_image, "+0", (x1 + rw - 5, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 5, cv2.LINE_AA)
+                print("Wrong ans: wrote +0.")
+            return ans
 
 if __name__ == "__main__":
     print("In main function.")
@@ -181,6 +199,13 @@ if __name__ == "__main__":
         answers.extend([q_left_ans, q_right_ans])
         print(f"Q{i*2+1}: {q_left_ans}")
         print(f"Q{i*2+2}: {q_right_ans}")
+    
+    # code for debugging to check a specific question
+    # q_no = 1
+    # tag_point_index = (q_no + 1) // 2
+    # q_roi = LEFT_QUESTION_ROI if q_no % 2 == 1 else RIGHT_QUESTION_ROI
+    # q_ans = detect_bubble(preprocessed_image, tag_points[tag_point_index-1], q_roi, debug_image, checked_image, ans_key[q_no-1])
+    # print(f"Q{q_no}: {q_ans}")
     
     print(answers)
 
