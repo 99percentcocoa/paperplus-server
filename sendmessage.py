@@ -4,6 +4,8 @@ import requests
 from requests.auth import HTTPBasicAuth
 import json
 
+load_dotenv()
+
 EXOTEL_SID = os.getenv("EXOTEL_SID")
 EXOTEL_KEY = os.getenv("EXOTEL_KEY")
 EXOTEL_TOKEN = os.getenv("EXOTEL_TOKEN")

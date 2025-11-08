@@ -133,7 +133,7 @@ def handle_message(data):
                         tag_points = list(map(lambda t: tuple(map(int, t.center.tolist())), detection_25h9))
                         for i, point in enumerate(tag_points):
                             # print(f"In point {i+1}.")
-                            q_left_ans_key = q_left_ans_key = ans_key[i*2]
+                            q_left_ans_key = ans_key[i*2]
                             q_left_ans = omr_detection.detect_bubble(dewarped_img, point, omr_detection.LEFT_QUESTION_ROI, debug_img, checked_img, q_left_ans_key)
 
                             q_right_ans_key = ans_key[i*2+1]
@@ -230,7 +230,7 @@ def serve_debug_file(filename):
         abort(404)
 
 # serve files from checked
-@app.route('/checked/<path:filename>', methods=['GET', 'POST'])
+@app.route('/checked/<path:filename>', methods=['GET'])
 def serve_checked_file(filename):
     try:
         return send_from_directory(CHECKED_PATH, filename, as_attachment=False)

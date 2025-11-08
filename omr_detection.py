@@ -12,8 +12,11 @@ MIN_MARK_AREA = 500 # TUNE THIS if needed
 MAX_MARK_AREA = 800
 FILL_THRESHOLD = 0.9
 
+MIN_CNT_ASPECT_RATIO = 0.7
+MAX_CNT_ASPECT_RATIO = 1.3
+
 # circularity condition
-MIN_CIRCULARITY = 0.75
+MIN_CIRCULARITY = 0.5
 
 # uses globally defined LEFT_QUESTION_ROI and RIGHT_QUESTION_ROI
 def show_roi_zones(image, points, debug_image):
@@ -69,9 +72,16 @@ def detect_bubble(image, anchor, roi, debug_image, checked_image, ans_key):
     enhanced = clahe.apply(gray_norm)
     # cv2.imwrite('q_crop_enhanced.jpg', enhanced)
 
-    blur = cv2.GaussianBlur(gray_crop, (5,5), 0)
-    _, thresh = cv2.threshold(
-        blur, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU
+    # blur = cv2.GaussianBlur(gray_norm, (5,5), 0)
+    blur = cv2.medianBlur(gray_norm, 3)
+    # _, thresh = cv2.threshold(
+    #     blur, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU
+    # )
+    thresh = cv2.adaptiveThreshold(
+        blur, 255,
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY_INV,
+        55, 30
     )
     # cv2.imwrite("q_thresh.jpg", thresh)
 
@@ -81,8 +91,14 @@ def detect_bubble(image, anchor, roi, debug_image, checked_image, ans_key):
 
     bubble_candidates = []
     for cnt in contours:
+        # draw every contour in red in debug image
+        cnt_global = cnt + np.array([[[x1, y1]]])
+        cv2.drawContours(debug_image, [cnt_global], -1, (0, 0, 255), 1)
+
         area = cv2.contourArea(cnt)
         perimeter = cv2.arcLength(cnt, True)
+        if perimeter == 0:
+            continue
         circularity = 4 * math.pi * (area / (perimeter * perimeter))
 
         # contour checks: 1. area, 2. circularity
@@ -90,9 +106,7 @@ def detect_bubble(image, anchor, roi, debug_image, checked_image, ans_key):
 
         # 1. area condition
         if MIN_MARK_AREA < area < MAX_MARK_AREA:
-            x, y, w, h = cv2.boundingRect(cnt)
-            aspect_ratio = w / float(h)
-
+            
             # 2. circularity condition
             if circularity > float(MIN_CIRCULARITY):
                 bubble_candidates.append(cnt)
@@ -103,9 +117,37 @@ def detect_bubble(image, anchor, roi, debug_image, checked_image, ans_key):
     ratios = []
     debug_crop = q_crop.copy()
 
-    # if there are more than 4 bubble candidates, return blank ans
+    for i, cnt in enumerate(bubble_candidates):
+        mask = np.zeros(thresh.shape, dtype=np.uint8)
+        cv2.drawContours(mask, [cnt], -1, 255, -1)
+        total_pixels = cv2.countNonZero(mask)
+        filled_pixels = cv2.countNonZero(cv2.bitwise_and(mask, thresh))
+        fill_ratio = filled_pixels / total_pixels if total_pixels > 0 else 0
+        ratios.append(fill_ratio)
+        # print(f"Bubble {chr(65+i)}: fill_ratio = {fill_ratio:.3f}, area = {cv2.contourArea(cnt)}")
+
+        color = (0, 255, 0)
+        if fill_ratio > FILL_THRESHOLD:
+            color = (255, 0, 0)
+            filled_index.append(i)
+
+        x, y, w, h = cv2.boundingRect(cnt)
+
+        cv2.drawContours(debug_crop, [cnt], -1, color, 2)
+        cv2.putText(debug_crop, f"{chr(65+i)}", (x, y-5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
+
+        # global debug image
+        cnt_global = cnt + np.array([[[x1, y1]]])
+        cv2.drawContours(debug_image, [cnt_global], -1, color, 2)
+        cv2.putText(debug_image, 
+                    f"{chr(65+i)} {fill_ratio:.2f}",
+                    (x1 + x, y1 + y - 5),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1, cv2.LINE_AA)
+
+    # cv2.imwrite('q_detected.jpg', debug_crop)
+
     if len(bubble_candidates) != 4:
-        print(f"{len(bubble_candidates)} bubble candidates instead of 4.")
+        print(f"{len(bubble_candidates)} bubble candidates detected instead of 4.")
 
         # draw red box in checked image and write "-1" near top-right
         cv2.rectangle(checked_image, (x1, y1), (x2, y2), (86, 86, 255), 2)
@@ -113,35 +155,6 @@ def detect_bubble(image, anchor, roi, debug_image, checked_image, ans_key):
 
         return ''
     else:
-        for i, cnt in enumerate(bubble_candidates):
-            mask = np.zeros(thresh.shape, dtype=np.uint8)
-            cv2.drawContours(mask, [cnt], -1, 255, -1)
-            total_pixels = cv2.countNonZero(mask)
-            filled_pixels = cv2.countNonZero(cv2.bitwise_and(mask, thresh))
-            fill_ratio = filled_pixels / total_pixels if total_pixels > 0 else 0
-            ratios.append(fill_ratio)
-            # print(f"Bubble {chr(65+i)}: fill_ratio = {fill_ratio:.3f}, area = {cv2.contourArea(cnt)}")
-
-            color = (0, 255, 0)
-            if fill_ratio > FILL_THRESHOLD:
-                color = (255, 0, 0)
-                filled_index.append(i)
-
-            x, y, w, h = cv2.boundingRect(cnt)
-
-            cv2.drawContours(debug_crop, [cnt], -1, color, 2)
-            cv2.putText(debug_crop, f"{chr(65+i)}", (x, y-5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
-
-            # global debug image
-            cnt_global = cnt + np.array([[[x1, y1]]])
-            cv2.drawContours(debug_image, [cnt_global], -1, color, 2)
-            cv2.putText(debug_image, 
-                        f"{chr(65+i)} {fill_ratio:.2f}",
-                        (x1 + x, y1 + y - 5),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1, cv2.LINE_AA)
-
-        # cv2.imwrite('q_detected.jpg', debug_crop)
-
         if not filled_index:
             print("No bubble detected as filled.")
 
