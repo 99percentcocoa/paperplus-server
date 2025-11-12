@@ -3,7 +3,7 @@ import os
 from flask import Flask, request, send_from_directory, abort
 import os, requests
 import logging
-import datetime
+from datetime import datetime
 import sendmessage
 import apriltags
 import json
@@ -40,7 +40,7 @@ def setup_logging(session_id):
 
     # Configure global logging
     logging.basicConfig(
-        level=logging.INFO,
+        level=logging.DEBUG,
         format="%(asctime)s [%(levelname)s] %(name)s | %(funcName)s:%(lineno)d - %(message)s",
         handlers=[
             logging.FileHandler(log_path),
@@ -161,11 +161,13 @@ def handle_message(data, session_id):
 
                         tag_points = list(map(lambda t: tuple(map(int, t.center.tolist())), detection_25h9))
                         for i, point in enumerate(tag_points):
-                            # logger.debug(f"In point {i+1}.")
+                            logger.debug(f"In point {i+1}.")
                             q_left_ans_key = ans_key[i*2]
+                            logger.debug(f"In question {i*2+1}")
                             q_left_ans = omr_detection.detect_bubble(dewarped_img, point, omr_detection.LEFT_QUESTION_ROI, debug_img, checked_img, q_left_ans_key)
 
                             q_right_ans_key = ans_key[i*2+1]
+                            logger.debug(f"In question {i*2+2}")
                             q_right_ans = omr_detection.detect_bubble(dewarped_img, point, omr_detection.RIGHT_QUESTION_ROI, debug_img, checked_img, q_right_ans_key)
                             answers.extend([q_left_ans, q_right_ans])
                             logger.debug(f"Q{i*2+1}: {q_left_ans}")
@@ -272,7 +274,7 @@ def serve_checked_file(filename):
 @app.route('/logs/<path:filename>', methods=['GET'])
 def serve_log(filename):
     try:
-        return send_from_directory(LOGS_PATH, filename, as_attachment=False)
+        return send_from_directory(LOGS_PATH, filename, as_attachment=True)
     except FileNotFoundError:
         abort(404)
 
