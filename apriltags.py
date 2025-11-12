@@ -1,6 +1,9 @@
 import cv2
 from pupil_apriltags import Detector
 import numpy as np
+import logging
+
+logger = logging.getLogger(__name__)
 
 at_detector_36h11 = Detector(
     families="tag36h11",

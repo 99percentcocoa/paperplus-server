@@ -3,6 +3,9 @@ import os
 import requests
 from requests.auth import HTTPBasicAuth
 import json
+import logging
+
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
@@ -32,10 +35,10 @@ def sendMessage(toNumber, message):
     })
 
     response = requests.post(url=api_url, data=payload, auth=HTTPBasicAuth(EXOTEL_KEY, EXOTEL_TOKEN))
-    print(response.content)
+    logger.info(response.content)
 
 def sendImage(toNumber, img_url):
-    print(f"Sending image {img_url} to {toNumber}")
+    logger.debug(f"Sending image {img_url} to {toNumber}")
     payload = json.dumps({
         "whatsapp": {
             "messages": [
@@ -58,7 +61,7 @@ def sendImage(toNumber, img_url):
     }
 
     response = requests.post(url=api_url, data=payload, headers=headers, auth=HTTPBasicAuth(EXOTEL_KEY, EXOTEL_TOKEN))
-    print(response.content)
+    logger.info(response.content)
 
 if __name__ == '__main__':
     sendMessage("+919145339332", "python hello")

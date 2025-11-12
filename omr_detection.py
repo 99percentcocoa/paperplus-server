@@ -3,6 +3,9 @@ import numpy as np
 import image
 import apriltags
 import math
+import logging
+
+logger = logging.getLogger(__name__)
 
 # roi format: (x_offset, y_offset, width, height)
 LEFT_QUESTION_ROI = (75, -40, 475, 85)
@@ -60,6 +63,8 @@ def detect_bubble(image, anchor, roi, debug_image, checked_image, ans_key):
     x2 = x1 + rw
     y2 = y1 + rh
 
+    logger.info(f"ROI coordinates: {x1}, {y1} to {x2}, {y2}")
+
     # draw green rectangle around ROI in debug image
     cv2.rectangle(debug_image, (x1, y1), (x2, y2), (0, 255, 0), 2)
 
@@ -87,9 +92,11 @@ def detect_bubble(image, anchor, roi, debug_image, checked_image, ans_key):
 
     # Contour Detection
     contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    # print(f"{len(contours)} contours found.")
+    logger.info(f"{len(contours)} contours found in ROI.")
 
+    # array of contours
     bubble_candidates = []
+
     for cnt in contours:
         # draw every contour in red in debug image
         cnt_global = cnt + np.array([[[x1, y1]]])
@@ -124,7 +131,10 @@ def detect_bubble(image, anchor, roi, debug_image, checked_image, ans_key):
         filled_pixels = cv2.countNonZero(cv2.bitwise_and(mask, thresh))
         fill_ratio = filled_pixels / total_pixels if total_pixels > 0 else 0
         ratios.append(fill_ratio)
-        # print(f"Bubble {chr(65+i)}: fill_ratio = {fill_ratio:.3f}, area = {cv2.contourArea(cnt)}")
+        bubble_area = cv2.contourArea(cnt)
+        bubble_perimeter = cv2.arcLength(cnt, True)
+        bubble_circularity = 4 * math.pi * (bubble_area / (bubble_perimeter * bubble_perimeter))
+        logger.info(f"Bubble {chr(65+i)}: fill_ratio = {fill_ratio:.3f}, area = {bubble_area}, circularity = {bubble_circularity}")
 
         color = (0, 255, 0)
         if fill_ratio > FILL_THRESHOLD:
@@ -147,7 +157,7 @@ def detect_bubble(image, anchor, roi, debug_image, checked_image, ans_key):
     # cv2.imwrite('q_detected.jpg', debug_crop)
 
     if len(bubble_candidates) != 4:
-        print(f"{len(bubble_candidates)} bubble candidates detected instead of 4.")
+        logger.debug(f"{len(bubble_candidates)} bubble candidates detected instead of 4.")
 
         # draw blue box in checked image and write "+0" near top-right
         cv2.rectangle(checked_image, (x1, y1), (x2, y2), (255, 0, 0), 2)
@@ -156,7 +166,7 @@ def detect_bubble(image, anchor, roi, debug_image, checked_image, ans_key):
         return ''
     else:
         if not filled_index:
-            print("No bubble detected as filled.")
+            logger.debug("No bubble detected as filled.")
 
             # draw red box in checked image and write "+0" near top-right
             cv2.rectangle(checked_image, (x1, y1), (x2, y2), (86, 86, 255), 2)
@@ -164,7 +174,7 @@ def detect_bubble(image, anchor, roi, debug_image, checked_image, ans_key):
 
             return ''
         elif len(filled_index) > 1:
-            print("Multiple bubbles detected.")
+            logger.debug("Multiple bubbles detected.")
 
             # draw red box in checked image and write "+0" near top-right
             cv2.rectangle(checked_image, (x1, y1), (x2, y2), (86, 86, 255), 2)
@@ -173,9 +183,9 @@ def detect_bubble(image, anchor, roi, debug_image, checked_image, ans_key):
             return ''
         else:
             ans = chr(65+filled_index[0])
-            print(f"Detected bubble: {ans}, correct ans: {ans_key}")
+            logger.info(f"Detected bubble: {ans}, correct ans: {ans_key}")
             if ans.lower() == ans_key.lower():
-                print("Correct ans.")
+                logger.info("Correct ans.")
                 # correct ans
                 # draw green box in checked image and write "+1" near top-right
                 cv2.rectangle(checked_image, (x1, y1), (x2, y2), (0, 127, 0), 2)
@@ -184,13 +194,13 @@ def detect_bubble(image, anchor, roi, debug_image, checked_image, ans_key):
                 # wrong ans
                 cv2.rectangle(checked_image, (x1, y1), (x2, y2), (0, 0, 255), 2)
                 # debug
-                print("Wrong ans: drew rectangle.")
+                logger.info("Wrong ans: drew rectangle.")
                 cv2.putText(checked_image, "+0", (x1 + rw - 5, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 5, cv2.LINE_AA)
-                print("Wrong ans: wrote +0.")
+                logger.info("Wrong ans: wrote +0.")
             return ans
 
 if __name__ == "__main__":
-    print("In main function.")
+    logger.info("In main function.")
     image = cv2.imread('dewarped_test25h9.jpg')
     preprocessed_image = image.preprocess(image)
     debug_image = preprocessed_image.copy()
@@ -199,19 +209,19 @@ if __name__ == "__main__":
     detection = apriltags.detect_tags_25h9(preprocessed_image)
     tag_points = list(map(lambda t: tuple(map(int, t.center.tolist())), detection))
     tag_points.sort(key = lambda d: d[1])
-    print(f"tag points: {tag_points}")
+    logger.info(f"tag points: {tag_points}")
 
     show_roi_zones(preprocessed_image, tag_points, debug_image)
     # cv2.imwrite('debug_roi.jpg', debug_image)
     answers = []
 
     for i, point in enumerate(tag_points):
-        # print(f"In point {i+1}.")
+        logger.debug(f"In point {i+1}.")
         q_left_ans = detect_bubble(preprocessed_image, point, LEFT_QUESTION_ROI, debug_image)
         q_right_ans = detect_bubble(preprocessed_image, point, RIGHT_QUESTION_ROI, debug_image)
         answers.extend([q_left_ans, q_right_ans])
-        print(f"Q{i*2+1}: {q_left_ans}")
-        print(f"Q{i*2+2}: {q_right_ans}")
+        logger.debug(f"Q{i*2+1}: {q_left_ans}")
+        logger.debug(f"Q{i*2+2}: {q_right_ans}")
     
     # code for debugging to check a specific question
     # q_no = 1
@@ -220,7 +230,7 @@ if __name__ == "__main__":
     # q_ans = detect_bubble(preprocessed_image, tag_points[tag_point_index-1], q_roi, debug_image, checked_image, ans_key[q_no-1])
     # print(f"Q{q_no}: {q_ans}")
     
-    print(answers)
+    logger.info(answers)
 
     # write final debug image
     cv2.imwrite('debug_final.jpg', debug_image)

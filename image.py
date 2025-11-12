@@ -1,5 +1,8 @@
 import cv2
 import numpy as np
+import logging
+
+logger = logging.getLogger(__name__)
 
 TARGET_WIDTH = 1240
 TARGET_HEIGHT = 1754
@@ -9,7 +12,7 @@ def dewarp_omr(filepath, tags):
     image = cv2.imread(filepath)
     
     if len(tags) != 4:
-        print("Less/more than 4 tags detected.")
+        logger.warning("Less/more than 4 tags detected.")
         return []
     
     corner_tags = {d.tag_id: d.center for d in tags}
