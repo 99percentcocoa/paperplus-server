@@ -149,8 +149,8 @@ def detect_bubble(image, anchor, roi, debug_image, checked_image, ans_key):
     if len(bubble_candidates) != 4:
         print(f"{len(bubble_candidates)} bubble candidates detected instead of 4.")
 
-        # draw red box in checked image and write "-1" near top-right
-        cv2.rectangle(checked_image, (x1, y1), (x2, y2), (86, 86, 255), 2)
+        # draw blue box in checked image and write "+0" near top-right
+        cv2.rectangle(checked_image, (x1, y1), (x2, y2), (255, 0, 0), 2)
         cv2.putText(checked_image, "+0", (x1 + rw - 5, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 5, cv2.LINE_AA)
 
         return ''
@@ -158,7 +158,7 @@ def detect_bubble(image, anchor, roi, debug_image, checked_image, ans_key):
         if not filled_index:
             print("No bubble detected as filled.")
 
-            # draw red box in checked image and write "-1" near top-right
+            # draw red box in checked image and write "+0" near top-right
             cv2.rectangle(checked_image, (x1, y1), (x2, y2), (86, 86, 255), 2)
             cv2.putText(checked_image, "+0", (x1 + rw - 5, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 5, cv2.LINE_AA)
 
@@ -166,7 +166,7 @@ def detect_bubble(image, anchor, roi, debug_image, checked_image, ans_key):
         elif len(filled_index) > 1:
             print("Multiple bubbles detected.")
 
-            # draw red box in checked image and write "-1" near top-right
+            # draw red box in checked image and write "+0" near top-right
             cv2.rectangle(checked_image, (x1, y1), (x2, y2), (86, 86, 255), 2)
             cv2.putText(checked_image, "+0", (x1 + rw - 5, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 5, cv2.LINE_AA)
 
