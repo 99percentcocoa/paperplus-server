@@ -7,20 +7,20 @@ logger = logging.getLogger(__name__)
 TARGET_WIDTH = 1240
 TARGET_HEIGHT = 1754
 
-# dewarping using apriltags. Note that "tags" should be the corner tags (36h11)
-def dewarp_omr(filepath, tags):
+# dewarping using apriltags
+# inputs:
+#   1. filepath
+#   2. detection (pre-arranged in clockwise order)
+#   3. tag_ids (the correct order of tag_ids: tl, tr, br, bl)
+def dewarp_omr(filepath, detection, tag_ids):
     image = cv2.imread(filepath)
     
-    if len(tags) != 4:
-        logger.warning("Less/more than 4 tags detected.")
-        return []
-    
-    corner_tags = {d.tag_id: d.center for d in tags}
+    corner_tags = {d.tag_id: d.center for d in detection}
 
-    tl = corner_tags[1]
-    tr = corner_tags[2]
-    bl = corner_tags[3]
-    br = corner_tags[4]
+    tl = corner_tags.get(tag_ids[0])
+    tr = corner_tags.get(tag_ids[1])
+    br = corner_tags.get(tag_ids[2])
+    bl = corner_tags.get(tag_ids[3])
     
     # Re-order the final source points: TL, TR, BR, BL
     # This is the essential input for cv2.getPerspectiveTransform

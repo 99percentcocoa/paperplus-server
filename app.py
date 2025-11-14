@@ -1,6 +1,7 @@
 from dotenv import load_dotenv
 import os
 from flask import Flask, request, send_from_directory, abort
+from tinydb import TinyDB, Query
 import os, requests
 import logging
 from datetime import datetime
@@ -9,6 +10,7 @@ import apriltags
 import json
 import threading
 import image
+import tags
 import cv2
 import omr_detection
 from pathlib import Path
@@ -108,14 +110,28 @@ def handle_message(data, session_id):
 
                 sendmessage.sendMessage(fromNo, "Processing...")
 
+                # detections from image
                 corner_tags = apriltags.detect_tags_36h11(filepath)
-                logger.debug(f"Detected tags: {list(map(lambda x:x.tag_id, corner_tags))}")
+
+                # detected_tags = list(map(lambda x:x.tag_id, corner_tags))
+                corner_tag_ids = [x.tag_id for x in corner_tags]
+                logger.debug(f"Detected tags: {corner_tag_ids}")
 
                 # corner tags (36h11) should be 1, 2, 3, 4
                 # question tags (25h9) should be 1, 2, 3, ..., 10
                 if (len(corner_tags) == 4):
+
+                    # sort the detections in local clockwise
+                    corner_tags = tags.sort_detections_clockwise(corner_tags)
+                    corner_tag_ids = [x.tag_id for x in corner_tags]
+                    logger.debug(f"Clockwise tag_ids: {[[x.tag_id, x.center] for x in corner_tags]}")
+
+                    # lookup the worksheet in database and get the correct order of the tags
+                    worksheet_id, tag_ids = tags.detect_orientation_and_decode(corner_tag_ids)
+                    logger.debug(f"Worksheet ID: {worksheet_id}, tag_ids: {tag_ids}")
+
                     # dewarp the image and save the dewarped image. Also preprocess it.
-                    dewarped_img = image.preprocess(image.dewarp_omr(filepath, corner_tags))
+                    dewarped_img = image.preprocess(image.dewarp_omr(filepath, corner_tags, tag_ids))
                     debug_img = dewarped_img.copy()
                     logger.info("Dewarped image.")
 
@@ -128,7 +144,10 @@ def handle_message(data, session_id):
                     cv2.imwrite(dewarped_filepath, dewarped_img)
                     logger.debug(f"Saved dewarped image to {dewarped_filepath}")
 
-                    ans_key = ['C', 'A', 'D', 'C', 'C', 'A', 'D', 'C', 'D', 'A', 'B', 'C', 'A', 'D', 'C', 'C', 'A', 'C', 'A', 'B']
+                    db = TinyDB('worksheets.json')
+                    ans_key = db.get(doc_id=worksheet_id).get('answerKey')
+                    logger.info(f"Answer key for worksheet {worksheet_id}: {ans_key}")
+                    # ans_key = ['C', 'A', 'D', 'C', 'C', 'A', 'D', 'C', 'D', 'A', 'B', 'C', 'A', 'D', 'C', 'C', 'A', 'C', 'A', 'B']
                     answers = []
 
                     # detect the 25h9 tags
@@ -146,7 +165,8 @@ def handle_message(data, session_id):
 
                         # 25h9 tags are missing, ask user to send image again.
                         sendmessage.sendMessage(fromNo, "Please try again. ⟳")
-                    else:
+
+                    else: # if not required.issubset(present):
                         extra = present - required
                         logger.debug(f"Extra tags detected: {extra}")
                         if extra:
@@ -155,7 +175,8 @@ def handle_message(data, session_id):
                             detected_tags_25h9 = list(map(lambda x:x.tag_id, detection_25h9))
                             
                             logger.debug(f"Extra tags removed, new list: {detected_tags_25h9}")
-                        else:
+
+                        else: # if extra:
                             # all tags correct
                             logger.info("All 25h9 tags are correct.")
 
@@ -197,7 +218,7 @@ def handle_message(data, session_id):
                         # calculate and send score
                         score = check_results(answers, ans_key)
 
-                        sendmessage.sendMessage(fromNo, score)
+                        sendmessage.sendMessage(fromNo, f"Your marks: {score}/{len(ans_key)}")
 
                         # send visual checked paper
                         logger.info("Sending checked image.")
@@ -206,12 +227,15 @@ def handle_message(data, session_id):
                         # log successful scan to google sheet
                         logger.debug(f"Logging {fromNo}, {fileURL}, {debugURL}, {json.dumps(answers)}, {score}")
                         log_to_sheet(fromNo, fileURL, debugURL, checked_URL, json.dumps(answers), score, logURL)
-                else:
+
+                else: # if len(corner_tags) == 4
+                    logging.debug("Less/more than 4 tags found.")
                     sendmessage.sendMessage(fromNo, "Please take a complete photo of the image. ⟳")
 
                     # log failed scan to google sheet
                     log_to_sheet(fromNo, fileURL, "", "", "failed", "", logURL)
-            else:
+
+            else: # if content.get("type") == "image" and "image" in content:
                 sendmessage.sendMessage(fromNo, "Please send an image of a scanned worksheet.")
 
                 # log failed scan (user message does not contain image) to google sheet
@@ -243,7 +267,7 @@ def check_results(results, ans_key):
             if marked_lowercase[i] == anskey_lowercase[i]:
                 marks += 1
         
-        return f"Congratulations! Total marks: {marks}/20"
+        return marks
 
 
 # serve files from downloads
