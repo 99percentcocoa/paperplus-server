@@ -127,12 +127,12 @@ def handle_message(data, session_id):
                     logger.debug(f"Clockwise tag_ids: {[[x.tag_id, x.center] for x in corner_tags]}")
 
                     # lookup the worksheet in database and get the correct order of the tags
-                    worksheet_id, corner_tags = tags.detect_orientation_and_decode(corner_tag_ids)
+                    worksheet_id, corner_tags = tags.detect_orientation_and_decode(corner_tags)
                     corner_tag_ids = [x.tag_id for x in corner_tags]
                     logger.debug(f"Worksheet ID: {worksheet_id}, tag_ids: {corner_tag_ids}")
 
                     # dewarp the image and save the dewarped image. Also preprocess it.
-                    dewarped_img = image.preprocess(image.dewarp_omr(filepath, corner_tags, tag_ids))
+                    dewarped_img = image.preprocess(image.dewarp_omr(filepath, corner_tags))
                     debug_img = dewarped_img.copy()
                     logger.info("Dewarped image.")
 
