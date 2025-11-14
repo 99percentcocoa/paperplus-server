@@ -12,15 +12,18 @@ TARGET_HEIGHT = 1754
 #   1. filepath
 #   2. detection (pre-arranged in clockwise order)
 #   3. tag_ids (the correct order of tag_ids: tl, tr, br, bl)
-def dewarp_omr(filepath, detection, tag_ids):
+def dewarp_omr(filepath, detection):
     image = cv2.imread(filepath)
     
-    corner_tags = {d.tag_id: d.center for d in detection}
+    # detections are already sorted in tl, tr, br, bl
+    corner_tags = [d.center for d in detection]
+    logger.debug(f"Pre arranging: {corner_tags}")
 
-    tl = corner_tags.get(tag_ids[0])
-    tr = corner_tags.get(tag_ids[1])
-    br = corner_tags.get(tag_ids[2])
-    bl = corner_tags.get(tag_ids[3])
+    tl = corner_tags[0]
+    tr = corner_tags[1]
+    br = corner_tags[2]
+    bl = corner_tags[3]
+    logger.debug(f"Final tags in order: {tl}, {tr}, {br}, {bl}.")
     
     # Re-order the final source points: TL, TR, BR, BL
     # This is the essential input for cv2.getPerspectiveTransform

@@ -71,28 +71,31 @@ def rotate(lst, n):
 
 # look up detected worksheet, and return correct order tag_ids
 # returns worksheet ID and the correct order of tag_ids
-def detect_orientation_and_decode(tag_ids):
+def detect_orientation_and_decode(detection):
     """
     tag_ids: list of 4 detected tag IDs in clockwise order
              starting from any corner.
     Returns (worksheet_id, numRotations)
     """
     numRotations = 0
-    for rot, degrees in enumerate([0, 90, 180, 270]):
-        rotated = rotate(tag_ids, rot)
-        numRotations += 1
-        if rotated[0] == ORIENTATION_ID:        # TL found
-            tr, br, bl = rotated[1], rotated[2], rotated[3]
 
-            worksheet_id = decode_from_tags(tr, br, bl)
-            logging.debug(f"Scanned worksheet ID: {worksheet_id}")
+    for rot in range(4):
+        # rot starts with 0
+        rotated = rotate(detection, rot)
+        tag_ids = [d.tag_id for d in rotated]
+        numRotations += 1
+        print(f"At rotation {numRotations}")
+        if tag_ids[0] == ORIENTATION_ID:        # TL found
+
+            worksheet_id = decode_from_tags(tag_ids[1], tag_ids[2], tag_ids[3])
+            print(f"Scanned worksheet ID: {worksheet_id}")
 
             # check if worksheet id is in database
             if db.contains(doc_id=worksheet_id):
-                logging.info(f"Found worksheet id {worksheet_id}: {db.get(doc_id=worksheet_id).get('name', '')}")
+                print(f"Found worksheet id {worksheet_id}: {db.get(doc_id=worksheet_id).get('name', '')}")
                 return worksheet_id, rotated
             else:
-                logging.info(f"Worksheet ID {worksheet_id} not found in database.")
+                print(f"Worksheet ID {worksheet_id} not found in database.")
                 return None, None
     return None, None  # some error
 
