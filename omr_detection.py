@@ -8,18 +8,15 @@ import logging
 logger = logging.getLogger(__name__)
 
 # roi format: (x_offset, y_offset, width, height)
-LEFT_QUESTION_ROI = (75, -40, 475, 85)
-RIGHT_QUESTION_ROI = (602, -40, 475, 85)
+LEFT_QUESTION_ROI = (85, -40, 475, 85)
+RIGHT_QUESTION_ROI = (620, -40, 475, 85)
 
-MIN_MARK_AREA = 500 # TUNE THIS if needed
-MAX_MARK_AREA = 800
-FILL_THRESHOLD = 0.8
-
-MIN_CNT_ASPECT_RATIO = 0.7
-MAX_CNT_ASPECT_RATIO = 1.3
+MIN_MARK_AREA = 600 # TUNE THIS if needed
+MAX_MARK_AREA = 950
+FILL_THRESHOLD = 0.9
 
 # circularity condition
-MIN_CIRCULARITY = 0.5
+MIN_CIRCULARITY = 0.75
 
 # uses globally defined LEFT_QUESTION_ROI and RIGHT_QUESTION_ROI
 def show_roi_zones(image, points, debug_image):
@@ -73,17 +70,9 @@ def detect_bubble(image, anchor, roi, debug_image, checked_image, ans_key):
 
     gray_crop = cv2.cvtColor(q_crop, cv2.COLOR_BGR2GRAY)
     gray_norm = cv2.normalize(gray_crop, None, 0, 255, cv2.NORM_MINMAX)
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
-    enhanced = clahe.apply(gray_norm)
-    # cv2.imwrite('q_crop_enhanced.jpg', enhanced)
-
-    # blur = cv2.GaussianBlur(gray_norm, (5,5), 0)
-    blur = cv2.medianBlur(gray_norm, 3)
-    # _, thresh = cv2.threshold(
-    #     blur, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU
-    # )
+    
     thresh = cv2.adaptiveThreshold(
-        blur, 255,
+        gray_norm, 255,
         cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
         cv2.THRESH_BINARY_INV,
         55, 30
@@ -97,23 +86,35 @@ def detect_bubble(image, anchor, roi, debug_image, checked_image, ans_key):
     # array of contours
     bubble_candidates = []
 
-    for cnt in contours:
+    for idx, cnt in enumerate(contours):
         # draw every contour in red in debug image
         cnt_global = cnt + np.array([[[x1, y1]]])
         cv2.drawContours(debug_image, [cnt_global], -1, (0, 0, 255), 1)
+
+        # label the contour for debugging
+        M = cv2.moments(cnt)
+        if M["m00"] != 0:
+            cX = int(M["m10"] / M["m00"]) + x1
+            cY = int(M["m01"] / M["m00"]) + y1
+        else:
+            x, y, w, h = cv2.boundingRect(cnt)
+            cX = (x + w // 2) + x1
+            cY = (y + h // 2) + y1
+        
+        cv2.putText(debug_image, f"{idx+1}", (cX, cY), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2) # Red text
 
         area = cv2.contourArea(cnt)
         perimeter = cv2.arcLength(cnt, True)
         if perimeter == 0:
             continue
         circularity = 4 * math.pi * (area / (perimeter * perimeter))
+        logger.debug(f"Contour {idx+1}: area = {area}, perimiter = {perimeter}, circularity = {circularity}")
 
         # contour checks: 1. area, 2. circularity
         # if there are still more than 4, check if they are evenly spaced and horizontal, and remove the y outlier (todo)
 
         # 1. area condition
         if MIN_MARK_AREA < area < MAX_MARK_AREA:
-            
             # 2. circularity condition
             if circularity > float(MIN_CIRCULARITY):
                 bubble_candidates.append(cnt)
