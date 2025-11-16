@@ -57,6 +57,55 @@ def split_img(image):
     # cv2.imwrite(f"{filepath}_left.jpg", left_half)
     # cv2.imwrite(f"{filepath}_right.jpg", right_half)
 
+# new preprocessing pipeline
+def clean_document(img):
+    if img is None:
+        raise ValueError("Cannot load image.")
+
+    # 2. Convert to grayscale
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+    # 3. Remove noise (median filter works well for text)
+    denoised = cv2.medianBlur(gray, 3)
+
+    # 4. Shadow / illumination correction
+    #    We estimate the background by heavy blur
+    background = cv2.GaussianBlur(denoised, (99, 99), 0)
+
+    # Avoid divide-by-zero
+    background = background.astype(np.float32)
+    denoised = denoised.astype(np.float32)
+
+    # Normalize lighting
+    corrected = (denoised / (background + 1)) * 255
+    corrected = np.clip(corrected, 0, 255).astype(np.uint8)
+
+    # 5. Sharpen slightly (helps with blur)
+    kernel = np.array([
+        [0, -1, 0],
+        [-1,  5, -1],
+        [0, -1, 0]
+    ])
+    sharp = cv2.filter2D(corrected, -1, kernel)
+
+    # 6. Adaptive thresholding
+    #    Sauvola style (OpenCV uses a similar method)
+    binary = cv2.adaptiveThreshold(
+        sharp,
+        255,
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY,
+        101,   # block size
+        10    # constant subtracted
+    )
+
+    # 7. Small speckle removal
+    #    Remove small white or black dots
+    clean = cv2.medianBlur(binary, 3)
+    color_img = cv2.cvtColor(clean, cv2.COLOR_GRAY2BGR)
+
+    return color_img
+
 # preprocessing pipeline designed for a scanned sheet
 def preprocess(img):
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
