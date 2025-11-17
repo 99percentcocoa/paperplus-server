@@ -35,6 +35,9 @@ def crop_image(fp):
         print(f"detected wid {wid}")
 
         cropped = image.dewarp_omr(fp, detection)
+        cropped_filename = f'cropped_{Path(fp).stem}.jpg'
+        cropped_filepath = os.path.join(TESTING_PATH, cropped_filename)
+        cv2.imwrite(cropped_filepath, cropped)
         return wid, cropped
     else:
         print("Less/more than 4 tags detected.")
