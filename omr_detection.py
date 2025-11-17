@@ -13,7 +13,7 @@ RIGHT_QUESTION_ROI = (620, -40, 475, 85)
 
 MIN_MARK_AREA = 600 # TUNE THIS if needed
 MAX_MARK_AREA = 950
-FILL_THRESHOLD = 0.7
+FILL_THRESHOLD = 0.6
 
 # circularity condition
 MIN_CIRCULARITY = 0.75
@@ -128,8 +128,13 @@ def detect_bubble(image, anchor, roi, debug_image, checked_image, ans_key):
     for i, cnt in enumerate(bubble_candidates):
         mask = np.zeros(thresh.shape, dtype=np.uint8)
         cv2.drawContours(mask, [cnt], -1, 255, -1)
-        total_pixels = cv2.countNonZero(mask)
-        filled_pixels = cv2.countNonZero(cv2.bitwise_and(mask, thresh))
+
+        # shrink the mask to account for the thickness of the bubble shape
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+        shrunken_mask = cv2.erode(mask, kernel, iterations=2)
+
+        total_pixels = cv2.countNonZero(shrunken_mask)
+        filled_pixels = cv2.countNonZero(cv2.bitwise_and(shrunken_mask, thresh))
         fill_ratio = filled_pixels / total_pixels if total_pixels > 0 else 0
         ratios.append(fill_ratio)
         bubble_area = cv2.contourArea(cnt)
