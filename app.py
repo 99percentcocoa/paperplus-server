@@ -132,7 +132,7 @@ def handle_message(data, session_id):
                     logger.debug(f"Worksheet ID: {worksheet_id}, tag_ids: {corner_tag_ids}")
 
                     # dewarp the image and save the dewarped image. Also preprocess it.
-                    dewarped_img = image.preprocess(image.dewarp_omr(filepath, corner_tags))
+                    dewarped_img = image.clean_document(image.dewarp_omr(filepath, corner_tags))
                     debug_img = dewarped_img.copy()
                     logger.info("Dewarped image.")
 
