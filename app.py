@@ -108,7 +108,7 @@ def handle_message(data, session_id):
 
                 logger.debug(f"Saved image: {filepath}")
 
-                sendmessage.sendMessage(fromNo, "Processing...")
+                sendmessage.sendMessage(fromNo, "Processing... ⏳")
 
                 # detections from image
                 corner_tags = apriltags.detect_tags_36h11(filepath)
@@ -165,7 +165,7 @@ def handle_message(data, session_id):
                         logger.debug(f"Missing 25h9 tags: {missing}")
 
                         # 25h9 tags are missing, ask user to send image again.
-                        sendmessage.sendMessage(fromNo, "Please try again. ⟳")
+                        sendmessage.sendMessage(fromNo, "Please try again. ⟳ \n फोटो परत काढा ⟳")
 
                     else: # if not required.issubset(present):
                         extra = present - required
@@ -219,7 +219,7 @@ def handle_message(data, session_id):
                         # calculate and send score
                         score = check_results(answers, ans_key)
 
-                        sendmessage.sendMessage(fromNo, f"Your marks: {score}/{len(ans_key)}")
+                        sendmessage.sendMessage(fromNo, f"Your marks: {score}/{len(ans_key)} \n तुमचे मार्क: {score}/{len(ans_key)}")
 
                         # send visual checked paper
                         logger.info("Sending checked image.")
@@ -231,13 +231,13 @@ def handle_message(data, session_id):
 
                 else: # if len(corner_tags) == 4
                     logging.debug("Less/more than 4 tags found.")
-                    sendmessage.sendMessage(fromNo, "Please take a complete photo of the image. ⟳")
+                    sendmessage.sendMessage(fromNo, "Please take a complete photo of the worksheet. ⟳ \n कृपया कार्यपत्रिकेचा संपूर्ण फोटो काढा. ⟳")
 
                     # log failed scan to google sheet
                     log_to_sheet(fromNo, fileURL, "", "", "failed", "", logURL)
 
             else: # if content.get("type") == "image" and "image" in content:
-                sendmessage.sendMessage(fromNo, "Please send an image of a scanned worksheet.")
+                sendmessage.sendMessage(fromNo, "Please send an image of a scanned worksheet. \n कृप्या केवळ कार्यपत्रिकेचा फोटो काढा.")
 
                 # log failed scan (user message does not contain image) to google sheet
                 log_to_sheet(fromNo, "none", "", "", "failed", "", logURL)
