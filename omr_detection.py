@@ -4,6 +4,7 @@ import image
 import apriltags
 import math
 import logging
+from PIL import Image, ImageDraw, ImageFont
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +51,7 @@ def show_roi_zones(image, points, debug_image):
     # cv2.imwrite('debug_roi.jpg', debug_image)
 
 # function to detect filled bubble given anchor point and roi (either LEFT or RIGHT)
+# checked_image is a PIL image while the other images are cv2 images.
 # will return: 'A', 'B', 'C', 'D' or '' (when none is selected or multiple are selected)
 def detect_bubble(image, anchor, roi, debug_image, checked_image, ans_key):
     (rx, ry, rw, rh) = roi
@@ -61,6 +63,11 @@ def detect_bubble(image, anchor, roi, debug_image, checked_image, ans_key):
     y2 = y1 + rh
 
     logger.info(f"ROI coordinates: {x1}, {y1} to {x2}, {y2}")
+
+    # PIL setup for adding tick and cross marks
+    font = ImageFont.truetype("NotoSansSymbols2-Regular.ttf", 60)
+    pil_draw = ImageDraw.Draw(checked_image)
+    font = ImageFont.truetype("NotoSansSymbols2-Regular.ttf", 60)
 
     # draw green rectangle around ROI in debug image
     # cv2.rectangle(debug_image, (x1, y1), (x2, y2), (0, 255, 0), 2)
@@ -169,8 +176,10 @@ def detect_bubble(image, anchor, roi, debug_image, checked_image, ans_key):
         cv2.rectangle(debug_image, (x1, y1), (x2, y2), (255, 0, 0), 2)
 
         # draw blue box in checked image and write "+0" near top-right
-        cv2.rectangle(checked_image, (x1, y1), (x2, y2), (255, 0, 0), 2)
-        cv2.putText(checked_image, "+0", (x1 + rw - 5, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 5, cv2.LINE_AA)
+        # cv2.rectangle(checked_image, (x1, y1), (x2, y2), (255, 0, 0), 2)
+        # cv2.putText(checked_image, "+0", (x1 + rw - 5, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 5, cv2.LINE_AA)
+        pil_draw.rectangle([(x1, y1), (x2, y2)], fill=None, outline=(0, 0, 200))
+        pil_draw.text((x1 + rw - 5, y1 - 5), "?", fill=(0, 0, 200), font=font)
 
         return ''
     else:
@@ -181,8 +190,10 @@ def detect_bubble(image, anchor, roi, debug_image, checked_image, ans_key):
             cv2.rectangle(debug_image, (x1, y1), (x2, y2), (86, 86, 255), 2)
 
             # draw red box in checked image and write "+0" near top-right
-            cv2.rectangle(checked_image, (x1, y1), (x2, y2), (86, 86, 255), 2)
-            cv2.putText(checked_image, "+0", (x1 + rw - 5, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 5, cv2.LINE_AA)
+            # cv2.rectangle(checked_image, (x1, y1), (x2, y2), (86, 86, 255), 2)
+            # cv2.putText(checked_image, "+0", (x1 + rw - 5, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 5, cv2.LINE_AA)
+            pil_draw.rectangle([(x1, y1), (x2, y2)], fill=None, outline=(255, 86, 86))
+            pil_draw.text((x1 + rw - 5, y1 - 5), "?", fill=(255, 86, 86), font=font)
 
             return ''
         elif len(filled_index) > 1:
@@ -192,8 +203,10 @@ def detect_bubble(image, anchor, roi, debug_image, checked_image, ans_key):
             cv2.rectangle(debug_image, (x1, y1), (x2, y2), (86, 86, 255), 2)
 
             # draw red box in checked image and write "+0" near top-right
-            cv2.rectangle(checked_image, (x1, y1), (x2, y2), (86, 86, 255), 2)
-            cv2.putText(checked_image, "+0", (x1 + rw - 5, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 5, cv2.LINE_AA)
+            # cv2.rectangle(checked_image, (x1, y1), (x2, y2), (86, 86, 255), 2)
+            # cv2.putText(checked_image, "+0", (x1 + rw - 5, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 5, cv2.LINE_AA)
+            pil_draw.rectangle([(x1, y1), (x2, y2)], fill=None, outline=(255, 86, 86))
+            pil_draw.text((x1 + rw - 5, y1 - 5), "✘", fill=(255, 86, 86), font=font)
 
             return ''
         else:
@@ -204,21 +217,81 @@ def detect_bubble(image, anchor, roi, debug_image, checked_image, ans_key):
                 # correct ans
                 # draw green box in debug image
                 cv2.rectangle(debug_image, (x1, y1), (x2, y2), (0, 255, 0), 2)
+
                 # draw green box in checked image and write "+1" near top-right
-                cv2.rectangle(checked_image, (x1, y1), (x2, y2), (0, 127, 0), 2)
-                cv2.putText(checked_image, "+1", (x1 + rw - 5, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 127, 0), 5, cv2.LINE_AA)
+                # cv2.rectangle(checked_image, (x1, y1), (x2, y2), (0, 127, 0), 2)
+                # cv2.putText(checked_image, "+1", (x1 + rw - 5, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 127, 0), 5, cv2.LINE_AA)
+                pil_draw.rectangle([(x1, y1), (x2, y2)], fill=None, outline=(0, 127, 0))
+                pil_draw.text((x1 + rw - 5, y1 - 5), "✔", fill=(0, 127, 0), font=font)
+
             else:
                 # wrong ans
                 # draw red box in debug image
                 cv2.rectangle(debug_image, (x1, y1), (x2, y2), (0, 0, 255), 2)
                 
                 # draw red box in checked image
-                cv2.rectangle(checked_image, (x1, y1), (x2, y2), (0, 0, 255), 2)
-                # debug
-                logger.info("Wrong ans: drew rectangle.")
-                cv2.putText(checked_image, "+0", (x1 + rw - 5, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 5, cv2.LINE_AA)
-                logger.info("Wrong ans: wrote +0.")
+                # cv2.rectangle(checked_image, (x1, y1), (x2, y2), (0, 0, 255), 2)
+                # cv2.putText(checked_image, "+0", (x1 + rw - 5, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 5, cv2.LINE_AA)
+                pil_draw.rectangle([(x1, y1), (x2, y2)], fill=None, outline=(255, 86, 86))
+                pil_draw.text((x1 + rw - 5, y1 - 5), "✘", fill=(255, 86, 86), font=font)
             return ans
+
+# make a circle mark to show marks obtained
+def make_circle_mark(obtained, total, diameter=150):
+    # Canvas (RGBA so it supports transparency)
+    img = Image.new("RGBA", (diameter, diameter), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+
+    DARK_BLUE = (10, 20, 120, 255)
+
+    # Circle border
+    draw.ellipse(
+        [(5, 5), (diameter-5, diameter-5)],
+        outline=DARK_BLUE,
+        width=7
+    )
+
+    # Horizontal line through center
+    center_y = diameter // 2
+    draw.line(
+        [(20, center_y), (diameter-20, center_y)],
+        fill=DARK_BLUE,
+        width=7
+    )
+
+    # Load font
+    try:
+        font = ImageFont.truetype("NotoSans-Bold.ttf", 50)
+    except:
+        font = ImageFont.load_default()
+
+    # --- TOP TEXT (obtained marks) ---
+    top_text = str(obtained)
+    bbox = draw.textbbox((0, 0), top_text, font=font)
+    tw = bbox[2] - bbox[0]
+    th = bbox[3] - bbox[1]
+
+    draw.text(
+        ((diameter - tw) // 2, center_y - th - 30),
+        top_text,
+        fill=DARK_BLUE,
+        font=font
+    )
+
+    # --- BOTTOM TEXT (total marks) ---
+    bottom_text = str(total)
+    bbox2 = draw.textbbox((0, 0), bottom_text, font=font)
+    tw2 = bbox2[2] - bbox2[0]
+    th2 = bbox2[3] - bbox2[1]
+
+    draw.text(
+        ((diameter - tw2) // 2, center_y),
+        bottom_text,
+        fill=DARK_BLUE,
+        font=font
+    )
+
+    return img
 
 if __name__ == "__main__":
     logger.info("In main function.")

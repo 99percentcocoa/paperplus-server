@@ -8,6 +8,7 @@ import os
 from dotenv import load_dotenv
 from pathlib import Path
 import app
+from PIL import Image
 load_dotenv()
 
 SAVE_DIR = "downloads"
@@ -51,7 +52,7 @@ def check_e2e(fp):
     # preprocessed = image.preprocess(cropped)
 
     debug_img = preprocessed.copy()
-    checked_img = preprocessed.copy()
+    checked_img = Image.fromarray(cv2.cvtColor(cropped, cv2.COLOR_BGR2RGB))
 
     db = TinyDB('worksheets.json')
     ans_key = db.get(doc_id=worksheet_id).get('answerKey')
@@ -113,17 +114,21 @@ def check_e2e(fp):
         cv2.imwrite(debug_filepath, debug_img)
         print(f"Saved debug image at {debug_filepath}")
 
+        # calculate and send score
+        score = app.check_results(answers, ans_key)
+
         # save checked image
         checked_filename = f'checked_{Path(fp).stem}.jpg'
         checked_filepath = os.path.join(TESTING_PATH, checked_filename)
         # checked_URL = f"http://{SERVER_IP}:3000/checked/{checked_filename}"
-        cv2.imwrite(checked_filepath, checked_img)
+        # cv2.imwrite(checked_filepath, checked_img)
+        check_circle = omr_detection.make_circle_mark(score, len(ans_key))
+        checked_img.paste(check_circle, (100, 50), check_circle)
+        checked_img.save(checked_filepath)
         print(f"Saved checked image at {checked_filepath}.")
 
         # debugURL = f"http://{SERVER_IP}:3000/debug/{debug_filename}"
 
         # send message with reply
         # sendmessage.sendMessage(fromNo, "Your answers:\n"+'\n '.join(f"{i}. {item}" for i, item in enumerate(answers, start=1)))
-        # calculate and send score
-        score = app.check_results(answers, ans_key)
         print(score)

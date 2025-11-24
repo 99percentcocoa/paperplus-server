@@ -14,6 +14,7 @@ import tags
 import cv2
 import omr_detection
 from pathlib import Path
+from PIL import Image
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -132,12 +133,13 @@ def handle_message(data, session_id):
                     logger.debug(f"Worksheet ID: {worksheet_id}, tag_ids: {corner_tag_ids}")
 
                     # dewarp the image and save the dewarped image. Also preprocess it.
-                    dewarped_img = image.clean_document(image.dewarp_omr(filepath, corner_tags))
+                    cropped_img = image.dewarp_omr(filepath, corner_tags)
+                    dewarped_img = image.clean_document(cropped_img)
                     debug_img = dewarped_img.copy()
                     logger.info("Dewarped image.")
 
-                    # checked image
-                    checked_img = dewarped_img.copy()
+                    # checked image - this is a PIL image, not a cv2 image
+                    checked_img = Image.fromarray(cv2.cvtColor(cropped_img, cv2.COLOR_BGR2RGB))
 
                     dewarped_filename = f"{Path(filepath).stem}_dewarped.jpg"
                     dewarped_filepath = os.path.join(DEWARPED_DIR, dewarped_filename)
@@ -209,8 +211,13 @@ def handle_message(data, session_id):
                         checked_filename = f'checked_{Path(filepath).stem}.jpg'
                         checked_filepath = os.path.join(CHECKED_PATH, checked_filename)
                         checked_URL = f"http://{SERVER_IP}:3000/checked/{checked_filename}"
-                        cv2.imwrite(checked_filepath, checked_img)
-                        logger.debug(f"Saved checked image at {checked_filepath}.")
+
+                        # add the marks circle at the top of the checked image
+                        check_circle = omr_detection.make_circle_mark(score, len(ans_key))
+                        checked_img.paste(check_circle, (100, 50), check_circle)
+                        # cv2.imwrite(checked_filepath, checked_img)
+                        checked_img.save(checked_filepath)
+                        logger.debug(f"Saved checked image at {checked_filepath} using PIL.")
 
                         debugURL = f"http://{SERVER_IP}:3000/debug/{debug_filename}"
 
