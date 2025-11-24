@@ -238,7 +238,7 @@ def handle_message(data, session_id):
                         logsheet_args = (fromNo, fileURL, debugURL, checked_URL, json.dumps(answers), score, logURL)
                         logger.debug(f"Logging {logsheet_args}")
                         # log_to_sheet(fromNo, fileURL, debugURL, checked_URL, json.dumps(answers), score, logURL)
-                        threading.Thread(target=log_to_sheet, args=(logsheet_args,)).start()
+                        threading.Thread(target=log_to_sheet, args=(logsheet_args)).start()
 
                 else: # if len(corner_tags) == 4
                     logging.debug("Less/more than 4 tags found.")
@@ -246,14 +246,14 @@ def handle_message(data, session_id):
 
                     # log failed scan to google sheet
                     logsheet_args = (fromNo, fileURL, "", "", "failed", "", logURL)
-                    threading.Thread(target=log_to_sheet, args=(logsheet_args,)).start()
+                    threading.Thread(target=log_to_sheet, args=(logsheet_args)).start()
 
             else: # if content.get("type") == "image" and "image" in content:
                 sendmessage.sendMessage(fromNo, "Please send an image of a scanned worksheet. \n कृप्या केवळ कार्यपत्रिकेचा फोटो काढा.")
 
                 # log failed scan (user message does not contain image) to google sheet
                 logsheet_args = (fromNo, "none", "", "", "failed", "", logURL)
-                threading.Thread(target=log_to_sheet, args=(logsheet_args,)).start()
+                threading.Thread(target=log_to_sheet, args=(logsheet_args)).start()
     except Exception as e:
         logging.exception("Error in background thread: ", e)
 
