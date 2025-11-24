@@ -201,6 +201,8 @@ def handle_message(data, session_id):
                     
                         logger.info(answers)
 
+                        score = check_results(answers, ans_key)
+
                         # save debug image
                         debug_filename = f'debug_{Path(filepath).stem}.jpg'
                         debug_filepath = os.path.join(DEBUG_PATH, debug_filename)
@@ -223,9 +225,8 @@ def handle_message(data, session_id):
 
                         # send message with reply
                         # sendmessage.sendMessage(fromNo, "Your answers:\n"+'\n '.join(f"{i}. {item}" for i, item in enumerate(answers, start=1)))
-                        # calculate and send score
-                        score = check_results(answers, ans_key)
-
+                        
+                        # send score message
                         sendmessage.sendMessage(fromNo, f"Your marks: {score}/{len(ans_key)} \n तुमचे मार्क: {score}/{len(ans_key)}")
 
                         # send visual checked paper
