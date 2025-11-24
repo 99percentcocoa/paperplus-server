@@ -109,7 +109,8 @@ def handle_message(data, session_id):
 
                 logger.debug(f"Saved image: {filepath}")
 
-                sendmessage.sendMessage(fromNo, "Processing... ⏳")
+                # sendmessage.sendMessage(fromNo, "Processing... ⏳")
+                threading.Thread(target=sendmessage.sendMessage, args=(fromNo, "Processing... ⏳",)).start()
 
                 # detections from image
                 corner_tags = apriltags.detect_tags_36h11(filepath)
@@ -234,21 +235,25 @@ def handle_message(data, session_id):
                         sendmessage.sendImage(fromNo, checked_URL)
 
                         # log successful scan to google sheet
-                        logger.debug(f"Logging {fromNo}, {fileURL}, {debugURL}, {json.dumps(answers)}, {score}")
-                        log_to_sheet(fromNo, fileURL, debugURL, checked_URL, json.dumps(answers), score, logURL)
+                        logsheet_args = (fromNo, fileURL, debugURL, checked_URL, json.dumps(answers), score, logURL)
+                        logger.debug(f"Logging {logsheet_args}")
+                        # log_to_sheet(fromNo, fileURL, debugURL, checked_URL, json.dumps(answers), score, logURL)
+                        threading.Thread(target=log_to_sheet, args=(logsheet_args,)).start()
 
                 else: # if len(corner_tags) == 4
                     logging.debug("Less/more than 4 tags found.")
                     sendmessage.sendMessage(fromNo, "Please take a complete photo of the worksheet. ⟳ \n कृपया कार्यपत्रिकेचा संपूर्ण फोटो काढा. ⟳")
 
                     # log failed scan to google sheet
-                    log_to_sheet(fromNo, fileURL, "", "", "failed", "", logURL)
+                    logsheet_args = (fromNo, fileURL, "", "", "failed", "", logURL)
+                    threading.Thread(target=log_to_sheet, args=(logsheet_args,)).start()
 
             else: # if content.get("type") == "image" and "image" in content:
                 sendmessage.sendMessage(fromNo, "Please send an image of a scanned worksheet. \n कृप्या केवळ कार्यपत्रिकेचा फोटो काढा.")
 
                 # log failed scan (user message does not contain image) to google sheet
-                log_to_sheet(fromNo, "none", "", "", "failed", "", logURL)
+                logsheet_args = (fromNo, "none", "", "", "failed", "", logURL)
+                threading.Thread(target=log_to_sheet, args=(logsheet_args,)).start()
     except Exception as e:
         logging.exception("Error in background thread: ", e)
 
