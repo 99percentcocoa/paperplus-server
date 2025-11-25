@@ -1,7 +1,8 @@
+# pylint: disable=no-member
+import logging
 import cv2
 from pupil_apriltags import Detector
 import numpy as np
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -28,12 +29,13 @@ at_detector_25h9 = Detector(
 def detect_tags_36h11(image_input):
     # case 1: image input is a file path
     if isinstance(image_input, str):
-        img = cv2.imread(image_input)
-    
+        img = cv2.imread(image_input)  # type: ignore[attr-defined]
     # case 2: image input is an opencv image array
     elif isinstance(image_input, np.ndarray):
         img = image_input
-    
+    else:
+        raise ValueError("image_input must be a file path (str) or numpy array")
+
     gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
     detection = at_detector_36h11.detect(gray_img)
@@ -44,11 +46,12 @@ def detect_tags_25h9(image_input):
 
     # case 1: image input is a file path
     if isinstance(image_input, str):
-        img = cv2.imread(image_input)
-    
+        img = cv2.imread(image_input)  # type: ignore[attr-defined]
     # case 2: image input is an opencv image array
     elif isinstance(image_input, np.ndarray):
         img = image_input
+    else:
+        raise ValueError("image_input must be a file path (str) or numpy array")
 
     gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
@@ -58,3 +61,4 @@ def detect_tags_25h9(image_input):
 
 if __name__ == "__main__":
     print(detect_tags_36h11('testing/testaprilfull.jpg'))
+    

@@ -34,7 +34,7 @@ def sendMessage(toNumber, message):
         }
     })
 
-    response = requests.post(url=api_url, data=payload, auth=HTTPBasicAuth(EXOTEL_KEY, EXOTEL_TOKEN))
+    response = requests.post(url=api_url, data=payload, auth=HTTPBasicAuth(EXOTEL_KEY, EXOTEL_TOKEN), timeout=(10, 30))
     logger.info(response.content)
 
 def sendImage(toNumber, img_url):
@@ -60,7 +60,7 @@ def sendImage(toNumber, img_url):
         'Content-Type': 'application/json'
     }
 
-    response = requests.post(url=api_url, data=payload, headers=headers, auth=HTTPBasicAuth(EXOTEL_KEY, EXOTEL_TOKEN))
+    response = requests.post(url=api_url, data=payload, headers=headers, auth=HTTPBasicAuth(EXOTEL_KEY, EXOTEL_TOKEN), timeout=(10, 30))
     logger.info(response.content)
 
 if __name__ == '__main__':

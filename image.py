@@ -1,6 +1,7 @@
+# pylint: disable=no-member
+import logging
 import cv2
 import numpy as np
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -17,13 +18,13 @@ def dewarp_omr(filepath, detection):
     
     # detections are already sorted in tl, tr, br, bl
     corner_tags = [d.center for d in detection]
-    logger.debug(f"Pre arranging: {corner_tags}")
+    logger.debug("Pre arranging: %s", corner_tags)
 
     tl = corner_tags[0]
     tr = corner_tags[1]
     br = corner_tags[2]
     bl = corner_tags[3]
-    logger.debug(f"Final tags in order: {tl}, {tr}, {br}, {bl}.")
+    logger.debug("Final tags in order: %s, %s, %s, %s.", tl, tr, br, bl)
     
     # Re-order the final source points: TL, TR, BR, BL
     # This is the essential input for cv2.getPerspectiveTransform
@@ -36,23 +37,23 @@ def dewarp_omr(filepath, detection):
         [0, TARGET_HEIGHT - 1]], dtype="float32")
 
     # Calculate the global perspective transform matrix (M)
-    M = cv2.getPerspectiveTransform(src_pts_aligned, dst_pts)
+    t_matrix = cv2.getPerspectiveTransform(src_pts_aligned, dst_pts)
 
     # Apply the dewarping
-    dewarped = cv2.warpPerspective(image, M, (TARGET_WIDTH, TARGET_HEIGHT))
+    dewarped = cv2.warpPerspective(image, t_matrix, (TARGET_WIDTH, TARGET_HEIGHT))
     return dewarped
 
 # split image into halves
-def split_img(image):
-    # image = cv2.imread(filepath)
-    height, width = image.shape[:2]
+# def split_img(image):
+#     # image = cv2.imread(filepath)
+#     height, width = image.shape[:2]
 
-    mid_x = width // 2
+#     mid_x = width // 2
 
-    left_half = image[:, :mid_x]
-    right_half = image[:, mid_x:]
+#     left_half = image[:, :mid_x]
+#     right_half = image[:, mid_x:]
 
-    return [left_half, right_half]
+#     return [left_half, right_half]
 
     # cv2.imwrite(f"{filepath}_left.jpg", left_half)
     # cv2.imwrite(f"{filepath}_right.jpg", right_half)
@@ -129,6 +130,3 @@ def preprocess(img):
 
     # cv2.imwrite("clean_preprocessed.jpg", color_img)
     return color_img
-
-if __name__ == "__main__":
-    dewarp_omr("2col.jpg_dewarped.jpg")

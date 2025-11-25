@@ -1,10 +1,11 @@
-import cv2
-import numpy as np
-import image
-import apriltags
+# pylint: disable=no-member
 import math
 import logging
+import cv2
+import numpy as np
 from PIL import Image, ImageDraw, ImageFont
+import image
+import apriltags
 
 logger = logging.getLogger(__name__)
 
@@ -62,12 +63,11 @@ def detect_bubble(image, anchor, roi, debug_image, checked_image, ans_key):
     x2 = x1 + rw
     y2 = y1 + rh
 
-    logger.info(f"ROI coordinates: {x1}, {y1} to {x2}, {y2}")
+    logger.info("ROI coordinates: %s, %s to %s, %s.", x1, y1, x2, y2)
 
     # PIL setup for adding tick and cross marks
     font = ImageFont.truetype("NotoSansSymbols2-Regular.ttf", 60)
     pil_draw = ImageDraw.Draw(checked_image)
-    font = ImageFont.truetype("NotoSansSymbols2-Regular.ttf", 60)
 
     # draw green rectangle around ROI in debug image
     # cv2.rectangle(debug_image, (x1, y1), (x2, y2), (0, 255, 0), 2)
@@ -88,7 +88,7 @@ def detect_bubble(image, anchor, roi, debug_image, checked_image, ans_key):
 
     # Contour Detection
     contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    logger.info(f"{len(contours)} contours found in ROI.")
+    logger.info("%s contours found in ROI.", len(contours))
 
     # array of contours
     bubble_candidates = []
@@ -115,7 +115,7 @@ def detect_bubble(image, anchor, roi, debug_image, checked_image, ans_key):
         if perimeter == 0:
             continue
         circularity = 4 * math.pi * (area / (perimeter * perimeter))
-        logger.debug(f"Contour {idx+1}: area = {area}, perimiter = {perimeter}, circularity = {circularity}")
+        logger.debug("Contour %s: area = %s, perimiter = %s, circularity = %s.", idx+1, area, perimeter, circularity)
 
         # contour checks: 1. area, 2. circularity
         # if there are still more than 4, check if they are evenly spaced and horizontal, and remove the y outlier (todo)
@@ -147,7 +147,7 @@ def detect_bubble(image, anchor, roi, debug_image, checked_image, ans_key):
         bubble_area = cv2.contourArea(cnt)
         bubble_perimeter = cv2.arcLength(cnt, True)
         bubble_circularity = 4 * math.pi * (bubble_area / (bubble_perimeter * bubble_perimeter))
-        logger.info(f"Bubble {chr(65+i)}: fill_ratio = {fill_ratio:.3f}, area = {bubble_area}, circularity = {bubble_circularity}")
+        logger.info("Bubble %s: fill_ratio = %s, area = %s, circularity = %s.", chr(65+i), fill_ratio, bubble_area, bubble_circularity)
 
         color = (0, 255, 0)
         if fill_ratio > FILL_THRESHOLD:
@@ -170,7 +170,7 @@ def detect_bubble(image, anchor, roi, debug_image, checked_image, ans_key):
     # cv2.imwrite('q_detected.jpg', debug_crop)
 
     if len(bubble_candidates) != 4:
-        logger.debug(f"{len(bubble_candidates)} bubble candidates detected instead of 4.")
+        logger.debug("%s bubble candidates detected instead of 4.", len(bubble_candidates))
 
         # draw blue box in debug image
         cv2.rectangle(debug_image, (x1, y1), (x2, y2), (255, 0, 0), 2)
@@ -211,7 +211,7 @@ def detect_bubble(image, anchor, roi, debug_image, checked_image, ans_key):
             return ''
         else:
             ans = chr(65+filled_index[0])
-            logger.info(f"Detected bubble: {ans}, correct ans: {ans_key}")
+            logger.info("Detected bubble: %s, correct ans: %s.", ans, ans_key)
             if ans.lower() == ans_key.lower():
                 logger.info("Correct ans.")
                 # correct ans
@@ -262,7 +262,7 @@ def make_circle_mark(obtained, total, diameter=150):
     # Load font
     try:
         font = ImageFont.truetype("NotoSans-Bold.ttf", 50)
-    except:
+    except (OSError, IOError):
         font = ImageFont.load_default()
 
     # --- TOP TEXT (obtained marks) ---
@@ -303,19 +303,19 @@ if __name__ == "__main__":
     detection = apriltags.detect_tags_25h9(preprocessed_image)
     tag_points = list(map(lambda t: tuple(map(int, t.center.tolist())), detection))
     tag_points.sort(key = lambda d: d[1])
-    logger.info(f"tag points: {tag_points}")
+    logger.info("tag points: %s.", tag_points)
 
     show_roi_zones(preprocessed_image, tag_points, debug_image)
     # cv2.imwrite('debug_roi.jpg', debug_image)
     answers = []
 
     for i, point in enumerate(tag_points):
-        logger.debug(f"In point {i+1}.")
+        logger.debug("In point %s.", i+1)
         q_left_ans = detect_bubble(preprocessed_image, point, LEFT_QUESTION_ROI, debug_image)
         q_right_ans = detect_bubble(preprocessed_image, point, RIGHT_QUESTION_ROI, debug_image)
         answers.extend([q_left_ans, q_right_ans])
-        logger.debug(f"Q{i*2+1}: {q_left_ans}")
-        logger.debug(f"Q{i*2+2}: {q_right_ans}")
+        logger.debug("Q%s: %s.", i*2+1, q_left_ans)
+        logger.debug("Q%s: %s.", i*2+2, q_right_ans)
     
     # code for debugging to check a specific question
     # q_no = 1
