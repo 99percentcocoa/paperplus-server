@@ -1,8 +1,8 @@
 from dotenv import load_dotenv
 import os
 from flask import Flask, request, send_from_directory, abort
-from tinydb import TinyDB, Query
-import os, requests
+from tinydb import TinyDB
+import requests
 import logging
 from datetime import datetime
 import sendmessage
@@ -52,7 +52,7 @@ def setup_logging(session_id):
     )
 
     logger = logging.getLogger(__name__)
-    logger.info(f"New session started. Logging to {log_path}")
+    logger.info("New session started. Logging to %s", log_path)
     return log_path
 
 def log_to_sheet(sender, fileURL, debugURL, checkedURL, marked, score, logURL):
@@ -65,20 +65,20 @@ def log_to_sheet(sender, fileURL, debugURL, checkedURL, marked, score, logURL):
         "score": score,
         "logURL": logURL
     }
-    logger.info(f"Google Sheet Logging Payload: {payload}")
+    logger.info("Google Sheet Logging Payload: %s", payload)
     requests.post(SHEETS_LOGGING_URL, json=payload, headers={"Content-Type": "application/json"})
 
 def handle_message(data, session_id):
     logURL = f"http://{SERVER_IP}:3000/logs/{session_id}.log"
     try:
-        logger.info("Received:", data)
+        logger.info("Received: %s", data)
 
         messages = data.get("whatsapp", {}).get("messages", [])
         for message in messages:
             fromNo = message.get("from")
             callback_type = message.get("callback_type")
 
-            logger.info(f"Received message from {fromNo}")
+            logger.info("Received message from %s", fromNo)
 
             # filter out the non-incoming messages (delivery, status messages)
             if callback_type and callback_type != "incoming_message":
@@ -107,7 +107,7 @@ def handle_message(data, session_id):
                     for chunk in r.iter_content(1024):
                         f.write(chunk)
 
-                logger.debug(f"Saved image: {filepath}")
+                logger.debug("Saved image: %s", filepath)
 
                 # sendmessage.sendMessage(fromNo, "Processing... ⏳")
                 threading.Thread(target=sendmessage.sendMessage, args=(fromNo, "Processing... ⏳",)).start()
@@ -117,7 +117,7 @@ def handle_message(data, session_id):
 
                 # detected_tags = list(map(lambda x:x.tag_id, corner_tags))
                 corner_tag_ids = [x.tag_id for x in corner_tags]
-                logger.debug(f"Detected tags: {corner_tag_ids}")
+                logger.debug("Detected tags: %s", corner_tag_ids)
 
                 # corner tags (36h11) should be 1, 2, 3, 4
                 # question tags (25h9) should be 1, 2, 3, ..., 10
@@ -126,12 +126,12 @@ def handle_message(data, session_id):
                     # sort the detections in local clockwise
                     corner_tags = tags.sort_detections_clockwise(corner_tags)
                     corner_tag_ids = [x.tag_id for x in corner_tags]
-                    logger.debug(f"Clockwise tag_ids: {[[x.tag_id, x.center] for x in corner_tags]}")
+                    logger.debug("Clockwise tag_ids: %s", [[x.tag_id, x.center] for x in corner_tags])
 
                     # lookup the worksheet in database and get the correct order of the tags
                     worksheet_id, corner_tags = tags.detect_orientation_and_decode(corner_tags)
                     corner_tag_ids = [x.tag_id for x in corner_tags]
-                    logger.debug(f"Worksheet ID: {worksheet_id}, tag_ids: {corner_tag_ids}")
+                    logger.debug("Worksheet ID: %s, tag_ids: %s", worksheet_id, corner_tag_ids)
 
                     # dewarp the image and save the dewarped image. Also preprocess it.
                     cropped_img = image.dewarp_omr(filepath, corner_tags)
@@ -146,18 +146,18 @@ def handle_message(data, session_id):
                     dewarped_filepath = os.path.join(DEWARPED_DIR, dewarped_filename)
 
                     cv2.imwrite(dewarped_filepath, dewarped_img)
-                    logger.debug(f"Saved dewarped image to {dewarped_filepath}")
+                    logger.debug("Saved dewarped image to %s", dewarped_filepath)
 
                     db = TinyDB('worksheets.json')
                     ans_key = db.get(doc_id=worksheet_id).get('answerKey')
-                    logger.info(f"Answer key for worksheet {worksheet_id}: {ans_key}")
+                    logger.info("Answer key for worksheet %s: %s", worksheet_id, ans_key)
                     # ans_key = ['C', 'A', 'D', 'C', 'C', 'A', 'D', 'C', 'D', 'A', 'B', 'C', 'A', 'D', 'C', 'C', 'A', 'C', 'A', 'B']
                     answers = []
 
                     # detect the 25h9 tags
                     detection_25h9 = apriltags.detect_tags_25h9(dewarped_img)
                     detected_tags_25h9 = list(map(lambda x:x.tag_id, detection_25h9))
-                    logger.debug(f"Detected tags: {detected_tags_25h9}")
+                    logger.debug("Detected tags: %s", detected_tags_25h9)
 
                     # verify 25h9 tags detection
                     required = set(range(1, 11))
@@ -165,20 +165,20 @@ def handle_message(data, session_id):
 
                     if not required.issubset(present):
                         missing = required - present
-                        logger.debug(f"Missing 25h9 tags: {missing}")
+                        logger.debug("Missing 25h9 tags: %s", missing)
 
                         # 25h9 tags are missing, ask user to send image again.
                         sendmessage.sendMessage(fromNo, "Please try again. ⟳ \n फोटो परत काढा ⟳")
 
                     else: # if not required.issubset(present):
                         extra = present - required
-                        logger.debug(f"Extra tags detected: {extra}")
+                        logger.debug("Extra tags detected: %s", extra)
                         if extra:
                             # extra tags, remove them and continue
                             detection_25h9[:] = [d for d in detection_25h9 if d.tag_id not in list(extra)]
                             detected_tags_25h9 = list(map(lambda x:x.tag_id, detection_25h9))
                             
-                            logger.debug(f"Extra tags removed, new list: {detected_tags_25h9}")
+                            logger.debug("Extra tags removed, new list: %s", detected_tags_25h9)
 
                         else: # if extra:
                             # all tags correct
@@ -186,21 +186,21 @@ def handle_message(data, session_id):
 
                         tag_points = list(map(lambda t: tuple(map(int, t.center.tolist())), detection_25h9))
                         for i, point in enumerate(tag_points):
-                            logger.debug(f"In point {i+1}.")
+                            logger.debug("In point %s.", i+1)
                             q_left_ans_key = ans_key[i*2]
-                            logger.debug(f"In question {i*2+1}")
+                            logger.debug("In question %s.", i*2+1)
                             q_left_ans = omr_detection.detect_bubble(dewarped_img, point, omr_detection.LEFT_QUESTION_ROI, debug_img, checked_img, q_left_ans_key)
 
                             q_right_ans_key = ans_key[i*2+1]
-                            logger.debug(f"In question {i*2+2}")
+                            logger.debug("In question %s.", i*2+2)
                             q_right_ans = omr_detection.detect_bubble(dewarped_img, point, omr_detection.RIGHT_QUESTION_ROI, debug_img, checked_img, q_right_ans_key)
                             answers.extend([q_left_ans, q_right_ans])
-                            logger.debug(f"Q{i*2+1}: {q_left_ans}")
-                            logger.debug(f"Q{i*2+2}: {q_right_ans}")
+                            logger.debug("Q%s: %s.", i*2+1, q_left_ans)
+                            logger.debug("Q%s: %s.", i*2+2, q_right_ans)
                             
                         logger.info("Finished checking.")
                     
-                        logger.info(answers)
+                        logger.info("Answers: %s", answers)
 
                         score = check_results(answers, ans_key)
 
@@ -208,7 +208,7 @@ def handle_message(data, session_id):
                         debug_filename = f'debug_{Path(filepath).stem}.jpg'
                         debug_filepath = os.path.join(DEBUG_PATH, debug_filename)
                         cv2.imwrite(debug_filepath, debug_img)
-                        logger.debug(f"Saved debug image at {debug_filepath}")
+                        logger.debug("Saved debug image at %s", debug_filepath)
 
                         # save checked image
                         checked_filename = f'checked_{Path(filepath).stem}.jpg'
@@ -220,7 +220,7 @@ def handle_message(data, session_id):
                         checked_img.paste(check_circle, (100, 50), check_circle)
                         # cv2.imwrite(checked_filepath, checked_img)
                         checked_img.save(checked_filepath)
-                        logger.debug(f"Saved checked image at {checked_filepath} using PIL.")
+                        logger.debug("Saved checked image at %s using PIL.", checked_filepath)
 
                         debugURL = f"http://{SERVER_IP}:3000/debug/{debug_filename}"
 
@@ -236,12 +236,12 @@ def handle_message(data, session_id):
 
                         # log successful scan to google sheet
                         logsheet_args = (fromNo, fileURL, debugURL, checked_URL, json.dumps(answers), score, logURL)
-                        logger.debug(f"Logging {logsheet_args}")
+                        logger.debug("Logging %s", logsheet_args)
                         # log_to_sheet(fromNo, fileURL, debugURL, checked_URL, json.dumps(answers), score, logURL)
                         threading.Thread(target=log_to_sheet, args=(logsheet_args)).start()
 
                 else: # if len(corner_tags) == 4
-                    logging.debug("Less/more than 4 tags found.")
+                    logger.debug("Less/more than 4 tags found.")
                     sendmessage.sendMessage(fromNo, "Please take a complete photo of the worksheet. ⟳ \n कृपया कार्यपत्रिकेचा संपूर्ण फोटो काढा. ⟳")
 
                     # log failed scan to google sheet
@@ -255,8 +255,7 @@ def handle_message(data, session_id):
                 logsheet_args = (fromNo, "none", "", "", "failed", "", logURL)
                 threading.Thread(target=log_to_sheet, args=(logsheet_args)).start()
     except Exception as e:
-        logging.exception("Error in background thread: ", e)
-
+        logger.exception("Error in background thread: %s", e)
 
 # use threading for the webhook so that can return 200 ok to exotel to avoid receiving duplicates
 @app.route("/webhook", methods=["POST"])
