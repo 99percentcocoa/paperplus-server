@@ -1,3 +1,28 @@
+"""
+PaperPlus Server - WhatsApp Worksheet Grading System
+
+A Flask-based webhook server that processes WhatsApp messages containing scanned worksheets.
+The system detects AprilTags on worksheets, performs optical mark recognition (OMR),
+grades the answers against a database of answer keys, and sends results back to users.
+
+Features:
+- WhatsApp webhook integration for receiving images
+- AprilTag detection for worksheet identification and orientation
+- Image processing and OMR for answer extraction
+- Automated grading against stored answer keys
+- Result logging to Google Sheets
+- Multi-language support (English and Marathi)
+
+Environment Variables Required:
+- SHEETS_LOGGING_URL: Google Sheets webhook URL for logging
+- DOWNLOADS_PATH: Directory for storing downloaded images
+- DEWARPED_PATH: Directory for processed images
+- DEBUG_PATH: Directory for debug images
+- CHECKED_PATH: Directory for graded result images
+- LOGS_PATH: Directory for session logs
+- SERVER_IP: Server IP address for file URLs
+"""
+
 from dotenv import load_dotenv
 import os
 from flask import Flask, request, send_from_directory, abort
@@ -253,8 +278,11 @@ def handle_message(data, session_id):
                 # log failed scan (user message does not contain image) to google sheet
                 logsheet_args = (fromNo, "none", "", "", "failed", "", logURL)
                 threading.Thread(target=log_to_sheet, args=(logsheet_args)).start()
-    except Exception as e:
+    except (requests.RequestException, IOError, OSError, ValueError, KeyError) as e:
         logger.exception("Error in background thread: %s", e)
+    except Exception as e:  # pylint: disable=broad-except
+        # Catch any other unexpected exceptions to prevent thread crashes
+        logger.exception("Unexpected error in background thread: %s", e)
 
 # use threading for the webhook so that can return 200 ok to exotel to avoid receiving duplicates
 @app.route("/webhook", methods=["POST"])
