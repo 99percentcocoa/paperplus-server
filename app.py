@@ -51,7 +51,6 @@ def setup_logging(session_id):
         ]
     )
 
-    logger = logging.getLogger(__name__)
     logger.info("New session started. Logging to %s", log_path)
     return log_path
 
@@ -66,7 +65,7 @@ def log_to_sheet(sender, fileURL, debugURL, checkedURL, marked, score, logURL):
         "logURL": logURL
     }
     logger.info("Google Sheet Logging Payload: %s", payload)
-    requests.post(SHEETS_LOGGING_URL, json=payload, headers={"Content-Type": "application/json"})
+    requests.post(SHEETS_LOGGING_URL, json=payload, headers={"Content-Type": "application/json"}, timeout=(10, 30))
 
 def handle_message(data, session_id):
     logURL = f"http://{SERVER_IP}:3000/logs/{session_id}.log"
