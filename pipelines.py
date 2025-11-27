@@ -23,6 +23,12 @@ LOGS_PATH = os.getenv("LOGS_PATH")
 SERVER_IP = os.getenv("SERVER_IP")
 TESTING_PATH = "testing"
 
+def preprocess(fp):
+    img = cv2.imread(fp)
+    # returns color preprocessed image
+    preprocessed = image.clean_document(img)
+    return preprocessed
+
 def crop_image(fp):
     detection = apriltags.detect_tags_36h11(fp)
     print(f"tags detected: {[d.tag_id for d in detection]}")
