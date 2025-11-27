@@ -107,6 +107,19 @@ def clean_document(img):
 
     return color_img
 
+# preprocessing for if tags are not detected due to faint printing (clahe + adaptive)
+def faint_preprocess(img):
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8,8))
+    cl = clahe.apply(gray)
+    th = cv2.adaptiveThreshold(
+        cl, 255,
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY, 81, 10
+    )
+    color_img = cv2.cvtColor(th, cv2.COLOR_GRAY2BGR)
+    return color_img
+
 # preprocessing pipeline designed for a scanned sheet
 def preprocess(img):
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)

@@ -140,6 +140,12 @@ def handle_message(data, session_id):
                 # detections from image
                 corner_tags = apriltags.detect_tags_36h11(filepath)
 
+                if len(corner_tags) < 4:
+                    # try processing again in case of faint printing
+                    logger.info("Less than 4 corner tags detected. Reprocessing image for better detection.")
+                    faint_preprocessed_img = image.faint_preprocess(filepath)
+                    corner_tags = apriltags.detect_tags_36h11(faint_preprocessed_img)
+
                 # detected_tags = list(map(lambda x:x.tag_id, corner_tags))
                 corner_tag_ids = [x.tag_id for x in corner_tags]
                 logger.debug("Detected tags: %s", corner_tag_ids)
