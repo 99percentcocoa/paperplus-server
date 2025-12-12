@@ -60,6 +60,17 @@ SERVER_IP = os.getenv("SERVER_IP")
 
 # setup logging. Logs to a new file every time a message is received (webhook is called)
 def setup_logging(session_id):
+    """Set up logging configuration for a new session.
+
+    Creates a new log file for the session and configures logging to write to both
+    the file and console. Removes any existing handlers to prevent duplicate logs.
+
+    Args:
+        session_id (str): Unique identifier for the current session, used in filename
+
+    Returns:
+        str: Path to the created log file
+    """
     log_filename = f"{session_id}.log"
     log_path = os.path.join(LOGS_PATH, log_filename)
 
@@ -81,6 +92,20 @@ def setup_logging(session_id):
     return log_path
 
 def log_to_sheet(sender, fileURL, debugURL, checkedURL, marked, score, logURL):
+    """Log grading results to Google Sheets.
+
+    Creates a payload with grading information and sends it to the configured
+    Google Sheets webhook URL for logging purposes.
+
+    Args:
+        sender (str): WhatsApp sender identifier
+        fileURL (str): URL of the original uploaded file
+        debugURL (str): URL of the debug processing image
+        checkedURL (str): URL of the graded result image
+        marked (str): JSON string of detected answers
+        score (int): Number of correct answers
+        logURL (str): URL of the session log file
+    """
     payload = {
         "sender": sender,
         "fileURL": fileURL,
@@ -93,6 +118,233 @@ def log_to_sheet(sender, fileURL, debugURL, checkedURL, marked, score, logURL):
     logger.info("Google Sheet Logging Payload: %s", payload)
     requests.post(SHEETS_LOGGING_URL, json=payload, headers={"Content-Type": "application/json"}, timeout=(10, 30))
 
+def is_valid_image_message(message):
+    """Check if message is a valid incoming image message and extract image URL.
+
+    Args:
+        message (dict): WhatsApp message object
+
+    Returns:
+        tuple: (is_valid, image_url, sender_number) or (False, None, None)
+    """
+    fromNo = message.get("from")
+    callback_type = message.get("callback_type")
+
+    # Filter out non-incoming messages
+    if callback_type and callback_type != "incoming_message":
+        logger.info("Received delivery message. Continuing...")
+        return False, None, None
+
+    content = message.get("content", {})
+    if not content:
+        logger.info("No content found. Skipping...")
+        return False, None, None
+
+    if content.get("type") == "image" and "image" in content:
+        img = content["image"]
+        url = img.get("url") or img.get("link")
+        if not url:
+            return False, None, None
+        return True, url, fromNo
+
+    return False, None, None
+
+
+def download_image(url, session_id, sender_number):
+    """Download image from URL and save to disk.
+
+    Args:
+        url (str): Image URL to download
+        session_id (str): Session identifier
+        sender_number (str): Sender's phone number
+
+    Returns:
+        tuple: (filepath, fileURL) for the downloaded image
+    """
+    r = requests.get(url, stream=True, timeout=30)
+    ext = r.headers.get("Content-Type", "image/jpeg").split("/")[-1]
+    filename = f"{session_id}_{sender_number[1:]}.{ext}"
+    fileURL = f"http://{SERVER_IP}:3000/files/{filename}"
+
+    filepath = os.path.join(SAVE_DIR, filename)
+    with open(filepath, "wb") as f:
+        for chunk in r.iter_content(1024):
+            f.write(chunk)
+
+    logger.debug("Saved image: %s", filepath)
+    return filepath, fileURL
+
+
+def detect_and_validate_corner_tags(filepath):
+    """Detect AprilTags for corner positioning and validate detection.
+
+    Args:
+        filepath (str): Path to the image file
+
+    Returns:
+        tuple: (corner_tags, success) where success indicates if exactly 4 tags found
+    """
+    # Detect corner tags (36h11)
+    corner_tags = apriltags.detect_tags_36h11(filepath)
+
+    if len(corner_tags) < 4:
+        # Try processing again in case of faint printing
+        logger.info("Less than 4 corner tags detected. Reprocessing image for better detection.")
+        faint_preprocessed_img = image.faint_preprocess(filepath)
+        corner_tags = apriltags.detect_tags_36h11(faint_preprocessed_img)
+
+    corner_tag_ids = [x.tag_id for x in corner_tags]
+    logger.debug("Detected corner tags: %s", corner_tag_ids)
+
+    return corner_tags, len(corner_tags) == 4
+
+
+def process_image(filepath, corner_tags):
+    """Process image: dewarp, clean, and prepare for OMR.
+
+    Args:
+        filepath (str): Original image path
+        corner_tags: Detected corner tags for dewarp reference
+
+    Returns:
+        tuple: (dewarped_img, debug_img, checked_img, dewarped_filepath)
+    """
+    # Dewarp and clean the image
+    cropped_img = image.dewarp_omr(filepath, corner_tags)
+    dewarped_img = image.clean_document(cropped_img)
+    debug_img = dewarped_img.copy()
+    logger.info("Dewarped image.")
+
+    # Prepare checked image (PIL format)
+    checked_img = Image.fromarray(cv2.cvtColor(cropped_img, cv2.COLOR_BGR2RGB))
+
+    # Save dewarped image
+    dewarped_filename = f"{Path(filepath).stem}_dewarped.jpg"
+    dewarped_filepath = os.path.join(DEWARPED_DIR, dewarped_filename)
+    cv2.imwrite(dewarped_filepath, dewarped_img)
+    logger.debug("Saved dewarped image to %s", dewarped_filepath)
+
+    return dewarped_img, debug_img, checked_img, dewarped_filepath
+
+
+def process_omr_answers(dewarped_img, debug_img, checked_img, worksheet_id):
+    """Process OMR answers using 25h9 tags.
+
+    Args:
+        dewarped_img: Processed image for OMR
+        debug_img: Image for debug visualization
+        checked_img: PIL image for marking answers
+        worksheet_id: ID to lookup answer key
+
+    Returns:
+        tuple: (answers, ans_key, success) where success indicates if processing completed
+    """
+    # Load answer key from database
+    db = TinyDB('worksheets.json')
+    ans_key = db.get(doc_id=worksheet_id).get('answerKey')
+    logger.info("Answer key for worksheet %s: %s", worksheet_id, ans_key)
+
+    # Detect 25h9 tags for questions
+    detection_25h9 = apriltags.detect_tags_25h9(dewarped_img)
+    detected_tags_25h9 = list(map(lambda x: x.tag_id, detection_25h9))
+    logger.debug("Detected question tags: %s", detected_tags_25h9)
+
+    # Verify 25h9 tags detection
+    required = set(range(1, 11))
+    present = set(detected_tags_25h9)
+
+    if not required.issubset(present):
+        missing = required - present
+        logger.debug("Missing 25h9 tags: %s", missing)
+        return None, None, False  # Failed - missing tags
+
+    # Remove extra tags if any
+    extra = present - required
+    if extra:
+        logger.debug("Extra tags detected: %s", extra)
+        detection_25h9[:] = [d for d in detection_25h9 if d.tag_id not in list(extra)]
+        detected_tags_25h9 = list(map(lambda x: x.tag_id, detection_25h9))
+        logger.debug("Extra tags removed, new list: %s", detected_tags_25h9)
+    else:
+        logger.info("All 25h9 tags are correct.")
+
+    # Process answers for each tag
+    answers = []
+    tag_points = list(map(lambda t: tuple(map(int, t.center.tolist())), detection_25h9))
+
+    for i, point in enumerate(tag_points):
+        logger.debug("Processing point %s.", i+1)
+
+        # Left question
+        q_left_ans_key = ans_key[i*2]
+        logger.debug("Processing question %s.", i*2+1)
+        q_left_ans = omr_detection.detect_bubble(
+            dewarped_img, point, omr_detection.LEFT_QUESTION_ROI,
+            debug_img, checked_img, q_left_ans_key
+        )
+
+        # Right question
+        q_right_ans_key = ans_key[i*2+1]
+        logger.debug("Processing question %s.", i*2+2)
+        q_right_ans = omr_detection.detect_bubble(
+            dewarped_img, point, omr_detection.RIGHT_QUESTION_ROI,
+            debug_img, checked_img, q_right_ans_key
+        )
+
+        answers.extend([q_left_ans, q_right_ans])
+        logger.debug("Q%s: %s.", i*2+1, q_left_ans)
+        logger.debug("Q%s: %s.", i*2+2, q_right_ans)
+
+    logger.info("Finished checking answers.")
+    return answers, ans_key, True
+
+
+def handle_results(filepath, answers, ans_key, debug_img, checked_img, fromNo, fileURL, logURL):
+    """Handle grading results: save images, send messages, and log to sheets.
+
+    Args:
+        filepath: Original image path
+        answers: Detected answers list
+        ans_key: Correct answer key
+        debug_img: Debug visualization image
+        checked_img: PIL image with marked answers
+        fromNo: Sender number
+        fileURL: URL of original file
+        logURL: URL of log file
+    """
+    logger.info("Answers: %s", answers)
+    score = check_results(answers, ans_key)
+
+    # Save debug image
+    debug_filename = f'debug_{Path(filepath).stem}.jpg'
+    debug_filepath = os.path.join(DEBUG_PATH, debug_filename)
+    cv2.imwrite(debug_filepath, debug_img)
+    logger.debug("Saved debug image at %s", debug_filepath)
+
+    # Save checked image with score
+    checked_filename = f'checked_{Path(filepath).stem}.jpg'
+    checked_filepath = os.path.join(CHECKED_PATH, checked_filename)
+    checked_URL = f"http://{SERVER_IP}:3000/checked/{checked_filename}"
+
+    # Add marks circle to checked image
+    check_circle = omr_detection.make_circle_mark(score, len(ans_key))
+    checked_img.paste(check_circle, (100, 50), check_circle)
+    checked_img.save(checked_filepath)
+    logger.debug("Saved checked image at %s using PIL.", checked_filepath)
+
+    debugURL = f"http://{SERVER_IP}:3000/debug/{debug_filename}"
+
+    # Send results to user
+    sendmessage.sendMessage(fromNo, f"Your marks: {score}/{len(ans_key)} \n तुमचे मार्क: {score}/{len(ans_key)}")
+    logger.info("Sending checked image.")
+    sendmessage.sendImage(fromNo, checked_URL)
+
+    # Log to Google Sheets
+    logsheet_args = (fromNo, fileURL, debugURL, checked_URL, json.dumps(answers), score, logURL)
+    logger.debug("Logging %s", logsheet_args)
+    threading.Thread(target=log_to_sheet, args=(logsheet_args,)).start()
+
+
 def handle_message(data, session_id):
     logURL = f"http://{SERVER_IP}:3000/logs/{session_id}.log"
     try:
@@ -101,190 +353,61 @@ def handle_message(data, session_id):
         messages = data.get("whatsapp", {}).get("messages", [])
         for message in messages:
             fromNo = message.get("from")
-            callback_type = message.get("callback_type")
-
             logger.info("Received message from %s", fromNo)
 
-            # filter out the non-incoming messages (delivery, status messages)
-            if callback_type and callback_type != "incoming_message":
-                logger.info("Received delivery message. Continuing...")
-                continue
-            
-            content = message.get("content", {})
+            # Validate message and extract image URL
+            is_valid, image_url, _ = is_valid_image_message(message)
 
-            if not content:
-                logger.info("No content found. Skipping...")
-                continue
-            
-            if content.get("type") == "image" and "image" in content:
-                img = content["image"]
-                url = img.get("url") or img.get("link")
-                if not url:
-                    continue
+            if is_valid:
+                logger.info("Processing valid image message from %s", fromNo)
 
-                r = requests.get(url, stream=True, timeout=30)
-                ext = r.headers.get("Content-Type", "image/jpeg").split("/")[-1]
-                filename = f"{session_id}_{message.get('from','unknown')[1:]}.{ext}"
-                fileURL = f"http://{SERVER_IP}:3000/files/{filename}"
+                # Download the image
+                filepath, fileURL = download_image(image_url, session_id, fromNo)
 
-                filepath = os.path.join(SAVE_DIR, filename)
-                with open(filepath, "wb") as f:
-                    for chunk in r.iter_content(1024):
-                        f.write(chunk)
-
-                logger.debug("Saved image: %s", filepath)
-
-                # sendmessage.sendMessage(fromNo, "Processing... ⏳")
+                # Send processing message
                 threading.Thread(target=sendmessage.sendMessage, args=(fromNo, "Processing... ⏳",)).start()
 
-                # detections from image
-                corner_tags = apriltags.detect_tags_36h11(filepath)
+                # Detect and validate corner tags
+                corner_tags, corner_tags_valid = detect_and_validate_corner_tags(filepath)
 
-                if len(corner_tags) < 4:
-                    # try processing again in case of faint printing
-                    logger.info("Less than 4 corner tags detected. Reprocessing image for better detection.")
-                    faint_preprocessed_img = image.faint_preprocess(filepath)
-                    corner_tags = apriltags.detect_tags_36h11(faint_preprocessed_img)
-
-                # detected_tags = list(map(lambda x:x.tag_id, corner_tags))
-                corner_tag_ids = [x.tag_id for x in corner_tags]
-                logger.debug("Detected tags: %s", corner_tag_ids)
-
-                # corner tags (36h11) should be 1, 2, 3, 4
-                # question tags (25h9) should be 1, 2, 3, ..., 10
-                if (len(corner_tags) == 4):
-
-                    # sort the detections in local clockwise
+                if corner_tags_valid:
+                    # Sort detections clockwise and decode worksheet
                     corner_tags = tags.sort_detections_clockwise(corner_tags)
                     corner_tag_ids = [x.tag_id for x in corner_tags]
                     logger.debug("Clockwise tag_ids: %s", [[x.tag_id, x.center] for x in corner_tags])
 
-                    # lookup the worksheet in database and get the correct order of the tags
                     worksheet_id, corner_tags = tags.detect_orientation_and_decode(corner_tags)
                     corner_tag_ids = [x.tag_id for x in corner_tags]
                     logger.debug("Worksheet ID: %s, tag_ids: %s", worksheet_id, corner_tag_ids)
 
-                    # dewarp the image and save the dewarped image. Also preprocess it.
-                    cropped_img = image.dewarp_omr(filepath, corner_tags)
-                    dewarped_img = image.clean_document(cropped_img)
-                    debug_img = dewarped_img.copy()
-                    logger.info("Dewarped image.")
+                    # Process the image (dewarp, clean, etc.)
+                    dewarped_img, debug_img, checked_img, _ = process_image(filepath, corner_tags)
 
-                    # checked image - this is a PIL image, not a cv2 image
-                    checked_img = Image.fromarray(cv2.cvtColor(cropped_img, cv2.COLOR_BGR2RGB))
+                    # Process OMR answers
+                    answers, ans_key, omr_success = process_omr_answers(dewarped_img, debug_img, checked_img, worksheet_id)
 
-                    dewarped_filename = f"{Path(filepath).stem}_dewarped.jpg"
-                    dewarped_filepath = os.path.join(DEWARPED_DIR, dewarped_filename)
-
-                    cv2.imwrite(dewarped_filepath, dewarped_img)
-                    logger.debug("Saved dewarped image to %s", dewarped_filepath)
-
-                    db = TinyDB('worksheets.json')
-                    ans_key = db.get(doc_id=worksheet_id).get('answerKey')
-                    logger.info("Answer key for worksheet %s: %s", worksheet_id, ans_key)
-                    # ans_key = ['C', 'A', 'D', 'C', 'C', 'A', 'D', 'C', 'D', 'A', 'B', 'C', 'A', 'D', 'C', 'C', 'A', 'C', 'A', 'B']
-                    answers = []
-
-                    # detect the 25h9 tags
-                    detection_25h9 = apriltags.detect_tags_25h9(dewarped_img)
-                    detected_tags_25h9 = list(map(lambda x:x.tag_id, detection_25h9))
-                    logger.debug("Detected tags: %s", detected_tags_25h9)
-
-                    # verify 25h9 tags detection
-                    required = set(range(1, 11))
-                    present = set(detected_tags_25h9)
-
-                    if not required.issubset(present):
-                        missing = required - present
-                        logger.debug("Missing 25h9 tags: %s", missing)
-
-                        # 25h9 tags are missing, ask user to send image again.
+                    if omr_success:
+                        # Handle successful results
+                        handle_results(filepath, answers, ans_key, debug_img, checked_img, fromNo, fileURL, logURL)
+                    else:
+                        # OMR failed - missing question tags
                         sendmessage.sendMessage(fromNo, "Please try again. ⟳ \n फोटो परत काढा ⟳")
-
-                    else: # if not required.issubset(present):
-                        extra = present - required
-                        logger.debug("Extra tags detected: %s", extra)
-                        if extra:
-                            # extra tags, remove them and continue
-                            detection_25h9[:] = [d for d in detection_25h9 if d.tag_id not in list(extra)]
-                            detected_tags_25h9 = list(map(lambda x:x.tag_id, detection_25h9))
-                            
-                            logger.debug("Extra tags removed, new list: %s", detected_tags_25h9)
-
-                        else: # if extra:
-                            # all tags correct
-                            logger.info("All 25h9 tags are correct.")
-
-                        tag_points = list(map(lambda t: tuple(map(int, t.center.tolist())), detection_25h9))
-                        for i, point in enumerate(tag_points):
-                            logger.debug("In point %s.", i+1)
-                            q_left_ans_key = ans_key[i*2]
-                            logger.debug("In question %s.", i*2+1)
-                            q_left_ans = omr_detection.detect_bubble(dewarped_img, point, omr_detection.LEFT_QUESTION_ROI, debug_img, checked_img, q_left_ans_key)
-
-                            q_right_ans_key = ans_key[i*2+1]
-                            logger.debug("In question %s.", i*2+2)
-                            q_right_ans = omr_detection.detect_bubble(dewarped_img, point, omr_detection.RIGHT_QUESTION_ROI, debug_img, checked_img, q_right_ans_key)
-                            answers.extend([q_left_ans, q_right_ans])
-                            logger.debug("Q%s: %s.", i*2+1, q_left_ans)
-                            logger.debug("Q%s: %s.", i*2+2, q_right_ans)
-                            
-                        logger.info("Finished checking.")
-                    
-                        logger.info("Answers: %s", answers)
-
-                        score = check_results(answers, ans_key)
-
-                        # save debug image
-                        debug_filename = f'debug_{Path(filepath).stem}.jpg'
-                        debug_filepath = os.path.join(DEBUG_PATH, debug_filename)
-                        cv2.imwrite(debug_filepath, debug_img)
-                        logger.debug("Saved debug image at %s", debug_filepath)
-
-                        # save checked image
-                        checked_filename = f'checked_{Path(filepath).stem}.jpg'
-                        checked_filepath = os.path.join(CHECKED_PATH, checked_filename)
-                        checked_URL = f"http://{SERVER_IP}:3000/checked/{checked_filename}"
-
-                        # add the marks circle at the top of the checked image
-                        check_circle = omr_detection.make_circle_mark(score, len(ans_key))
-                        checked_img.paste(check_circle, (100, 50), check_circle)
-                        # cv2.imwrite(checked_filepath, checked_img)
-                        checked_img.save(checked_filepath)
-                        logger.debug("Saved checked image at %s using PIL.", checked_filepath)
-
-                        debugURL = f"http://{SERVER_IP}:3000/debug/{debug_filename}"
-
-                        # send message with reply
-                        # sendmessage.sendMessage(fromNo, "Your answers:\n"+'\n '.join(f"{i}. {item}" for i, item in enumerate(answers, start=1)))
-                        
-                        # send score message
-                        sendmessage.sendMessage(fromNo, f"Your marks: {score}/{len(ans_key)} \n तुमचे मार्क: {score}/{len(ans_key)}")
-
-                        # send visual checked paper
-                        logger.info("Sending checked image.")
-                        sendmessage.sendImage(fromNo, checked_URL)
-
-                        # log successful scan to google sheet
-                        logsheet_args = (fromNo, fileURL, debugURL, checked_URL, json.dumps(answers), score, logURL)
-                        logger.debug("Logging %s", logsheet_args)
-                        # log_to_sheet(fromNo, fileURL, debugURL, checked_URL, json.dumps(answers), score, logURL)
-                        threading.Thread(target=log_to_sheet, args=(logsheet_args)).start()
-
-                else: # if len(corner_tags) == 4
-                    logger.debug("Less/more than 4 tags found.")
+                else:
+                    # Corner tags detection failed
+                    logger.debug("Less/more than 4 corner tags found.")
                     sendmessage.sendMessage(fromNo, "Please take a complete photo of the worksheet. ⟳ \n कृपया कार्यपत्रिकेचा संपूर्ण फोटो काढा. ⟳")
 
-                    # log failed scan to google sheet
+                    # Log failed scan
                     logsheet_args = (fromNo, fileURL, "", "", "failed", "", logURL)
-                    threading.Thread(target=log_to_sheet, args=(logsheet_args)).start()
-
-            else: # if content.get("type") == "image" and "image" in content:
+                    threading.Thread(target=log_to_sheet, args=(logsheet_args,)).start()
+            else:
+                # Handle non-image messages
                 sendmessage.sendMessage(fromNo, "Please send an image of a scanned worksheet. \n कृप्या केवळ कार्यपत्रिकेचा फोटो काढा.")
 
-                # log failed scan (user message does not contain image) to google sheet
+                # Log failed scan (user message does not contain image)
                 logsheet_args = (fromNo, "none", "", "", "failed", "", logURL)
-                threading.Thread(target=log_to_sheet, args=(logsheet_args)).start()
+                threading.Thread(target=log_to_sheet, args=(logsheet_args,)).start()
+
     except (requests.RequestException, IOError, OSError, ValueError, KeyError) as e:
         logger.exception("Error in background thread: %s", e)
     except Exception as e:  # pylint: disable=broad-except
