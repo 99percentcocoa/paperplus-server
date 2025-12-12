@@ -365,7 +365,7 @@ def handle_message(data, session_id):
                 filepath, fileURL = download_image(image_url, session_id, fromNo)
 
                 # Send processing message
-                threading.Thread(target=sendmessage.sendMessage, args=(fromNo, "Processing... ⏳",)).start()
+                threading.Thread(target=sendmessage.sendMessage, args=(fromNo, "Checking... ⏳ \n कार्यपत्रिका तपासत आहे... ⏳",)).start()
 
                 # Detect and validate corner tags
                 corner_tags, corner_tags_valid = detect_and_validate_corner_tags(filepath)
@@ -391,11 +391,11 @@ def handle_message(data, session_id):
                         handle_results(filepath, answers, ans_key, debug_img, checked_img, fromNo, fileURL, logURL)
                     else:
                         # OMR failed - missing question tags
-                        sendmessage.sendMessage(fromNo, "Please try again. ⟳ \n फोटो परत काढा ⟳")
+                        sendmessage.sendMessage(fromNo, "Please try again. ⟳ \n फोटो परत काढा. ⟳")
                 else:
                     # Corner tags detection failed
                     logger.debug("Less/more than 4 corner tags found.")
-                    sendmessage.sendMessage(fromNo, "Please take a complete photo of the worksheet. ⟳ \n कृपया कार्यपत्रिकेचा संपूर्ण फोटो काढा. ⟳")
+                    sendmessage.sendMessage(fromNo, "Please take a complete photo of the worksheet. ⟳ \n कृपया कार्यपत्रिका संपूर्ण दिसेल असा फोटो काढा. ⟳")
 
                     # Log failed scan
                     logsheet_args = (fromNo, fileURL, "", "", "failed", "", logURL)
