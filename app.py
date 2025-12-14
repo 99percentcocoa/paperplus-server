@@ -30,7 +30,6 @@ import json
 import threading
 from pathlib import Path
 
-from dotenv import load_dotenv
 from flask import Flask, request, send_from_directory, abort
 from tinydb import TinyDB
 import requests
@@ -41,23 +40,23 @@ import apriltags
 import image
 import tags
 import omr_detection
+from config import SETTINGS
 
-load_dotenv()
+# load_dotenv()
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
-SAVE_DIR = "downloads"
-DEWARPED_DIR = "dewarped"
-SHEETS_LOGGING_URL = os.getenv("SHEETS_LOGGING_URL")
+SAVE_DIR = SETTINGS.DOWNLOADS_PATH
+DEWARPED_DIR = SETTINGS.DEWARPED_PATH
+SHEETS_LOGGING_URL = SETTINGS.SHEETS_LOGGING_URL
 
-DOWNLOADS_PATH = os.getenv("DOWNLOADS_PATH")
-DEWARPED_PATH = os.getenv("DEWARPED_PATH")
-DEBUG_PATH = os.getenv("DEBUG_PATH")
-CHECKED_PATH = os.getenv("CHECKED_PATH")
-LOGS_PATH = os.getenv("LOGS_PATH")
-SERVER_IP = os.getenv("SERVER_IP")
-
+DOWNLOADS_PATH = SETTINGS.DOWNLOADS_PATH
+DEWARPED_PATH = SETTINGS.DEWARPED_PATH
+DEBUG_PATH = SETTINGS.DEBUG_PATH
+CHECKED_PATH = SETTINGS.CHECKED_PATH
+LOGS_PATH = SETTINGS.LOGS_PATH
+SERVER_IP = SETTINGS.SERVER_IP
 # setup logging. Logs to a new file every time a message is received (webhook is called)
 def setup_logging(session_id):
     """Set up logging configuration for a new session.

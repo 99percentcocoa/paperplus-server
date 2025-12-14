@@ -6,19 +6,18 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 import image
 import apriltags
+from config import SETTINGS
 
 logger = logging.getLogger(__name__)
 
 # roi format: (x_offset, y_offset, width, height)
-LEFT_QUESTION_ROI = (85, -40, 475, 85)
-RIGHT_QUESTION_ROI = (620, -40, 475, 85)
+LEFT_QUESTION_ROI = SETTINGS.LEFT_QUESTION_ROI
+RIGHT_QUESTION_ROI = SETTINGS.RIGHT_QUESTION_ROI
 
-MIN_MARK_AREA = 600 # TUNE THIS if needed
-MAX_MARK_AREA = 950
-FILL_THRESHOLD = 0.6
-
-# circularity condition
-MIN_CIRCULARITY = 0.75
+MIN_MARK_AREA = SETTINGS.MIN_MARK_AREA
+MAX_MARK_AREA = SETTINGS.MAX_MARK_AREA
+FILL_THRESHOLD = SETTINGS.FILL_THRESHOLD
+MIN_CIRCULARITY = SETTINGS.MIN_CIRCULARITY
 
 # uses globally defined LEFT_QUESTION_ROI and RIGHT_QUESTION_ROI
 def show_roi_zones(image, points, debug_image):

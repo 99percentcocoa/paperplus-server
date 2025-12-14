@@ -1,18 +1,16 @@
-from dotenv import load_dotenv
 import os
 import requests
 from requests.auth import HTTPBasicAuth
 import json
 import logging
+from config import SETTINGS
 
 logger = logging.getLogger(__name__)
 
-load_dotenv()
-
-EXOTEL_SID = os.getenv("EXOTEL_SID")
-EXOTEL_KEY = os.getenv("EXOTEL_KEY")
-EXOTEL_TOKEN = os.getenv("EXOTEL_TOKEN")
-EXOTEL_SUBDOMAIN = os.getenv("EXOTEL_SUBDOMAIN")
+EXOTEL_SID = SETTINGS.EXOTEL_SID
+EXOTEL_KEY = SETTINGS.EXOTEL_KEY
+EXOTEL_TOKEN = SETTINGS.EXOTEL_TOKEN
+EXOTEL_SUBDOMAIN = SETTINGS.EXOTEL_SUBDOMAIN
 
 api_url = f'https://{EXOTEL_KEY}:{EXOTEL_TOKEN}@{EXOTEL_SUBDOMAIN}/v2/accounts/{EXOTEL_SID}/messages'
 
@@ -21,7 +19,7 @@ def sendMessage(toNumber, message):
         "whatsapp": {
             "messages": [
                 {
-                    "from": "+912071173227",
+                    "from": SETTINGS.WHATSAPP_FROM,
                     "to": toNumber,
                     "content": {
                         "type": "text",
@@ -43,7 +41,7 @@ def sendImage(toNumber, img_url):
         "whatsapp": {
             "messages": [
                 {
-                    "from": "+912071173227",
+                    "from": SETTINGS.WHATSAPP_FROM,
                     "to": toNumber,
                     "content": {
                         "type": "image",

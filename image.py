@@ -2,11 +2,12 @@
 import logging
 import cv2
 import numpy as np
+from config import SETTINGS
 
 logger = logging.getLogger(__name__)
 
-TARGET_WIDTH = 1240
-TARGET_HEIGHT = 1754
+TARGET_WIDTH = SETTINGS.TARGET_WIDTH
+TARGET_HEIGHT = SETTINGS.TARGET_HEIGHT
 
 # dewarping using apriltags
 # inputs:
