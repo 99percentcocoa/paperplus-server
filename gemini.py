@@ -10,6 +10,66 @@ load_dotenv()
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
+def single_question(image_input):
+    # case 1: image input is a file path
+    if isinstance(image_input, str):
+        with open(image_input, 'rb') as f:
+            image_bytes = f.read()
+    
+    # case 2: image input is an opencv image array
+    elif isinstance(image_input, np.ndarray):
+        success, buffer = cv2.imencode('.jpg', image_input)
+        if not success:
+            raise ValueError("Failed to encode OpenCV image.")
+        image_bytes = buffer.tobytes()
+
+    client = genai.Client(api_key=GEMINI_API_KEY)
+
+    response = client.models.generate_content(
+        model="gemini-2.0-flash-lite",
+        contents=[
+            types.Part.from_bytes(
+                data=image_bytes,
+                mime_type='image/jpeg'
+            )
+        ],
+        config=types.GenerateContentConfig(
+            response_mime_type="application/json",
+            response_schema=genai.types.Schema(
+                type = genai.types.Type.OBJECT,
+                required = ["answer"],
+                properties = {
+                    "answer": genai.types.Schema(
+                        type = genai.types.Type.STRING,
+                        enum = ["A", "B", "C", "D", "UNDETERMINED"],
+                    ),
+                },
+            ),
+            temperature=0.3,
+            system_instruction=[
+                types.Part.from_text(text="""You are a visual answer detection assistant.
+
+                    Your task is to analyze images of multiple-choice questions where students mark answers by filling, shading, circling, or scribbling near option labels (A, B, C, D).
+
+                    Rules:
+                    - Only use visible evidence from the image.
+                    - Do NOT guess if the marking is unclear.
+                    - Identify which option (A, B, C, or D) is marked most clearly.
+                    - Ignore printed symbols or decorative marks unless they indicate a student’s selection.
+                    - If multiple options appear marked, choose the darkest / most intentional marking.
+                    - If no option is clearly marked, return \"UNDETERMINED\".
+                    - If multiple options are marked, return \"UNDETERMINED\".
+
+                    Output format must be exactly:
+                    <A | B | C | D | UNDETERMINED>""")
+            ],
+        )
+    )
+    
+    print(response.text)
+    return json.loads(response.text)
+
+
 
 def scanImage(image_input):
 
