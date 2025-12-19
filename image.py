@@ -44,21 +44,6 @@ def dewarp_omr(filepath, detection):
     dewarped = cv2.warpPerspective(image, t_matrix, (TARGET_WIDTH, TARGET_HEIGHT))
     return dewarped
 
-# split image into halves
-# def split_img(image):
-#     # image = cv2.imread(filepath)
-#     height, width = image.shape[:2]
-
-#     mid_x = width // 2
-
-#     left_half = image[:, :mid_x]
-#     right_half = image[:, mid_x:]
-
-#     return [left_half, right_half]
-
-    # cv2.imwrite(f"{filepath}_left.jpg", left_half)
-    # cv2.imwrite(f"{filepath}_right.jpg", right_half)
-
 # new preprocessing pipeline
 def clean_document(img):
     if img is None:
