@@ -108,7 +108,7 @@ def process_omr_answers(dewarped_img, debug_img, checked_img, worksheet_id):
     return answers, ans_key, True
 
 
-def handle_results(filepath, answers, ans_key, debug_img, checked_img, fromNo, file_url, logURL):
+def handle_results(filepath, answers, ans_key, debug_img, checked_img, from_no, file_url, log_url):
     """Handle grading results: save images, send messages, and log to sheets.
 
     Args:
@@ -117,9 +117,9 @@ def handle_results(filepath, answers, ans_key, debug_img, checked_img, fromNo, f
         ans_key: Correct answer key
         debug_img: Debug visualization image
         checked_img: PIL image with marked answers
-        fromNo: Sender number
+        from_no: Sender number
         file_url: URL of original file
-        logURL: URL of log file
+        log_url: URL of log file
     """
     logger.info("Answers: %s", answers)
     score = check_results(answers, ans_key)
@@ -144,12 +144,12 @@ def handle_results(filepath, answers, ans_key, debug_img, checked_img, fromNo, f
     debugURL = f"http://{SERVER_IP}:3000/debug/{debug_filename}"
 
     # Send results to user
-    send_message(fromNo, f"Your marks: {score}/{len(ans_key)} \n तुमचे मार्क: {score}/{len(ans_key)}")
+    send_message(from_no, f"Your marks: {score}/{len(ans_key)} \n तुमचे मार्क: {score}/{len(ans_key)}")
     logger.info("Sending checked image.")
-    send_image(fromNo, checked_URL)
+    send_image(from_no, checked_URL)
 
     # Log to Google Sheets
-    logsheet_args = (fromNo, file_url, debugURL, checked_URL, json.dumps(answers), score, logURL)
+    logsheet_args = (from_no, file_url, debugURL, checked_URL, json.dumps(answers), score, log_url)
     logger.debug("Logging %s", logsheet_args)
     threading.Thread(target=log_to_sheet, args=(logsheet_args)).start()
 

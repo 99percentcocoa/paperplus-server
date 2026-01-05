@@ -49,7 +49,7 @@ def setup_logging(session_id):
     return log_path
 
 
-def log_to_sheet(sender, file_url, debugURL, checkedURL, marked, score, logURL):
+def log_to_sheet(sender, file_url, debugURL, checkedURL, marked, score, log_url):
     """Log grading results to Google Sheets.
 
     Creates a payload with grading information and sends it to the configured
@@ -62,7 +62,7 @@ def log_to_sheet(sender, file_url, debugURL, checkedURL, marked, score, logURL):
         checkedURL (str): URL of the graded result image
         marked (str): JSON string of detected answers
         score (int): Number of correct answers
-        logURL (str): URL of the session log file
+        log_url (str): URL of the session log file
     """
     payload = {
         "sender": sender,
@@ -71,7 +71,7 @@ def log_to_sheet(sender, file_url, debugURL, checkedURL, marked, score, logURL):
         "checkedURL": checkedURL,
         "marked": marked,
         "score": score,
-        "logURL": logURL
+        "logURL": log_url
     }
     logger.info("Google Sheet Logging Payload: %s", payload)
     requests.post(SHEETS_LOGGING_URL, json=payload, headers={"Content-Type": "application/json"}, timeout=(10, 30))

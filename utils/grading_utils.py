@@ -21,7 +21,7 @@ def check_results(results, ans_key):
         int or str: Number of correct answers, or error message if mismatch
     """
     logger.info("Checking results.")
-    if (len(results) != len(ans_key)):
+    if len(results) != len(ans_key):
         return "An error occurred. Please try again. ⟳"
     else:
         marked_lowercase = [item.lower() for item in results]
@@ -29,8 +29,8 @@ def check_results(results, ans_key):
 
         marks = 0
 
-        for i in range(len(marked_lowercase)):
-            if marked_lowercase[i] == anskey_lowercase[i]:
+        for marked_char, anskey_char in zip(marked_lowercase, anskey_lowercase):
+            if marked_char == anskey_char:
                 marks += 1
 
         return marks

@@ -14,8 +14,8 @@ def webhook():
 
     messages = data.get("whatsapp", {}).get("messages", [])
     for message in messages:
-        fromNo = message.get("from")
-        sendmessage.send_message(fromNo, "Hi.")
+        from_no = message.get("from")
+        sendmessage.send_message(from_no, "Hi.")
 
     return "ok", 200
 
