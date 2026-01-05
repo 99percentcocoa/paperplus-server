@@ -117,11 +117,12 @@ def handle_message(data, session_id):
                     threading.Thread(target=log_to_sheet, args=(logsheet_args)).start()
             else:
                 # Handle non-image messages
-                sendMessage(fromNo, "Please send an image of a scanned worksheet. \n कृप्या केवळ कार्यपत्रिकेचा फोटो काढा.")
+                if fromNo:
+                    sendMessage(fromNo, "Please send an image of a scanned worksheet. \n कृप्या केवळ कार्यपत्रिकेचा फोटो काढा.")
 
                 # Log failed scan (user message does not contain image)
-                logsheet_args = (fromNo, "none", "", "", "failed", "", logURL)
-                threading.Thread(target=log_to_sheet, args=(logsheet_args)).start()
+                # logsheet_args = (fromNo, "none", "", "", "failed", "", logURL)
+                # threading.Thread(target=log_to_sheet, args=(logsheet_args)).start()
 
     except (requests.RequestException, IOError, OSError, ValueError, KeyError) as e:
         logger.exception("Error in background thread: %s", e)
