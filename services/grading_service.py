@@ -1,29 +1,168 @@
-# pylint: disable=no-member
-import math
+"""
+Grading Service - Handles OMR processing, bubble detection, and answer grading.
+
+This module contains functions for processing Optical Mark Recognition (OMR)
+answers from worksheet images, detecting bubbles, and grading them against answer keys.
+"""
+
+import os
 import logging
-import cv2
+import json
+import threading
+import cv2  # pylint: disable=no-member
 import numpy as np
+import math
+from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
-import image
-import apriltags
+from tinydb import TinyDB
+from services.image_service import detect_tags_25h9
+from services.communication_service import sendMessage, sendImage
+from services.logging_service import log_to_sheet
 from config import SETTINGS
+from utils.grading_utils import check_results
 
 logger = logging.getLogger(__name__)
 
-# roi format: (x_offset, y_offset, width, height)
+DEBUG_PATH = SETTINGS.DEBUG_PATH
+CHECKED_PATH = SETTINGS.CHECKED_PATH
+SERVER_IP = SETTINGS.SERVER_IP
+
+# OMR Configuration
 LEFT_QUESTION_ROI = SETTINGS.LEFT_QUESTION_ROI
 RIGHT_QUESTION_ROI = SETTINGS.RIGHT_QUESTION_ROI
-
 MIN_MARK_AREA = SETTINGS.MIN_MARK_AREA
 MAX_MARK_AREA = SETTINGS.MAX_MARK_AREA
 FILL_THRESHOLD = SETTINGS.FILL_THRESHOLD
 MIN_CIRCULARITY = SETTINGS.MIN_CIRCULARITY
 
-# uses globally defined LEFT_QUESTION_ROI and RIGHT_QUESTION_ROI
-def show_roi_zones(image, points, debug_image):
-    # preprocessed = image.preprocess(image)
-    # cv2.imwrite('debug_preprocessed.jpg', preprocessed)
 
+def process_omr_answers(dewarped_img, debug_img, checked_img, worksheet_id):
+    """Process OMR answers using 25h9 tags.
+
+    Args:
+        dewarped_img: Processed image for OMR
+        debug_img: Image for debug visualization
+        checked_img: PIL image for marking answers
+        worksheet_id: ID to lookup answer key
+
+    Returns:
+        tuple: (answers, ans_key, success) where success indicates if processing completed
+    """
+    # Load answer key from database
+    db = TinyDB('worksheets.json')
+    ans_key = db.get(doc_id=worksheet_id).get('answerKey')
+    logger.info("Answer key for worksheet %s: %s", worksheet_id, ans_key)
+
+    # Detect 25h9 tags for questions
+    detection_25h9 = detect_tags_25h9(dewarped_img)
+    detected_tags_25h9 = list(map(lambda x: x.tag_id, detection_25h9))
+    logger.debug("Detected question tags: %s", detected_tags_25h9)
+
+    # Verify 25h9 tags detection
+    required = set(range(1, 11))
+    present = set(detected_tags_25h9)
+
+    if not required.issubset(present):
+        missing = required - present
+        logger.debug("Missing 25h9 tags: %s", missing)
+        return None, None, False  # Failed - missing tags
+
+    # Remove extra tags if any
+    extra = present - required
+    if extra:
+        logger.debug("Extra tags detected: %s", extra)
+        detection_25h9[:] = [d for d in detection_25h9 if d.tag_id not in list(extra)]
+        detected_tags_25h9 = list(map(lambda x: x.tag_id, detection_25h9))
+        logger.debug("Extra tags removed, new list: %s", detected_tags_25h9)
+    else:
+        logger.info("All 25h9 tags are correct.")
+
+    # Process answers for each tag
+    answers = []
+    tag_points = list(map(lambda t: tuple(map(int, t.center.tolist())), detection_25h9))
+
+    for i, point in enumerate(tag_points):
+        logger.debug("Processing point %s.", i+1)
+
+        # Left question
+        q_left_ans_key = ans_key[i*2]
+        logger.debug("Processing question %s.", i*2+1)
+        q_left_ans = detect_bubble(
+            dewarped_img, point, LEFT_QUESTION_ROI,
+            debug_img, checked_img, q_left_ans_key
+        )
+
+        # Right question
+        q_right_ans_key = ans_key[i*2+1]
+        logger.debug("Processing question %s.", i*2+2)
+        q_right_ans = detect_bubble(
+            dewarped_img, point, RIGHT_QUESTION_ROI,
+            debug_img, checked_img, q_right_ans_key
+        )
+
+        answers.extend([q_left_ans, q_right_ans])
+        logger.debug("Q%s: %s.", i*2+1, q_left_ans)
+        logger.debug("Q%s: %s.", i*2+2, q_right_ans)
+
+    logger.info("Finished checking answers.")
+    return answers, ans_key, True
+
+
+def handle_results(filepath, answers, ans_key, debug_img, checked_img, fromNo, fileURL, logURL):
+    """Handle grading results: save images, send messages, and log to sheets.
+
+    Args:
+        filepath: Original image path
+        answers: Detected answers list
+        ans_key: Correct answer key
+        debug_img: Debug visualization image
+        checked_img: PIL image with marked answers
+        fromNo: Sender number
+        fileURL: URL of original file
+        logURL: URL of log file
+    """
+    logger.info("Answers: %s", answers)
+    score = check_results(answers, ans_key)
+
+    # Save debug image
+    debug_filename = f'debug_{Path(filepath).stem}.jpg'
+    debug_filepath = os.path.join(DEBUG_PATH, debug_filename)
+    cv2.imwrite(debug_filepath, debug_img) # pylint: disable=no-member
+    logger.debug("Saved debug image at %s", debug_filepath)
+
+    # Save checked image with score
+    checked_filename = f'checked_{Path(filepath).stem}.jpg'
+    checked_filepath = os.path.join(CHECKED_PATH, checked_filename)
+    checked_URL = f"http://{SERVER_IP}:3000/checked/{checked_filename}"
+
+    # Add marks circle to checked image
+    check_circle = make_circle_mark(score, len(ans_key))
+    checked_img.paste(check_circle, (100, 50), check_circle)
+    checked_img.save(checked_filepath)
+    logger.debug("Saved checked image at %s using PIL.", checked_filepath)
+
+    debugURL = f"http://{SERVER_IP}:3000/debug/{debug_filename}"
+
+    # Send results to user
+    sendMessage(fromNo, f"Your marks: {score}/{len(ans_key)} \n तुमचे मार्क: {score}/{len(ans_key)}")
+    logger.info("Sending checked image.")
+    sendImage(fromNo, checked_URL)
+
+    # Log to Google Sheets
+    logsheet_args = (fromNo, fileURL, debugURL, checked_URL, json.dumps(answers), score, logURL)
+    logger.debug("Logging %s", logsheet_args)
+    threading.Thread(target=log_to_sheet, args=(logsheet_args)).start()
+
+
+# OMR Detection Functions
+def show_roi_zones(image, points, debug_image):
+    """Show ROI zones for debugging purposes.
+
+    Args:
+        image: Input image
+        points: Tag center points
+        debug_image: Debug image to draw on
+    """
     for i, point in enumerate(points):
         (point_x, point_y) = point
 
@@ -46,14 +185,22 @@ def show_roi_zones(image, points, debug_image):
 
         # draw red rectangle on right ROI
         cv2.rectangle(debug_image, (right_x1, right_y1), (right_x2, right_y2), (255, 0, 0), 2)
-    
-    # save image
-    # cv2.imwrite('debug_roi.jpg', debug_image)
 
-# function to detect filled bubble given anchor point and roi (either LEFT or RIGHT)
-# checked_image is a PIL image while the other images are cv2 images.
-# will return: 'A', 'B', 'C', 'D' or '' (when none is selected or multiple are selected)
+
 def detect_bubble(image, anchor, roi, debug_image, checked_image, ans_key):
+    """Detect filled bubble given anchor point and roi.
+
+    Args:
+        image: Input image
+        anchor: Anchor point coordinates
+        roi: Region of interest parameters
+        debug_image: Debug image for visualization
+        checked_image: PIL image for marking results
+        ans_key: Correct answer key
+
+    Returns:
+        str: Detected answer ('A', 'B', 'C', 'D') or '' if none/multiple detected
+    """
     (rx, ry, rw, rh) = roi
     (anchor_x, anchor_y) = anchor
 
@@ -76,7 +223,7 @@ def detect_bubble(image, anchor, roi, debug_image, checked_image, ans_key):
 
     gray_crop = cv2.cvtColor(q_crop, cv2.COLOR_BGR2GRAY)
     gray_norm = cv2.normalize(gray_crop, None, 0, 255, cv2.NORM_MINMAX)
-    
+
     thresh = cv2.adaptiveThreshold(
         gray_norm, 255,
         cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
@@ -106,7 +253,7 @@ def detect_bubble(image, anchor, roi, debug_image, checked_image, ans_key):
             x, y, w, h = cv2.boundingRect(cnt)
             cX = (x + w // 2) + x1
             cY = (y + h // 2) + y1
-        
+
         cv2.putText(debug_image, f"{idx+1}", (cX, cY), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2) # Red text
 
         area = cv2.contourArea(cnt)
@@ -161,7 +308,7 @@ def detect_bubble(image, anchor, roi, debug_image, checked_image, ans_key):
         # global debug image
         cnt_global = cnt + np.array([[[x1, y1]]])
         cv2.drawContours(debug_image, [cnt_global], -1, color, 2)
-        cv2.putText(debug_image, 
+        cv2.putText(debug_image,
                     f"{chr(65+i)} {fill_ratio:.2f}",
                     (x1 + x, y1 + y - 5),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1, cv2.LINE_AA)
@@ -227,7 +374,7 @@ def detect_bubble(image, anchor, roi, debug_image, checked_image, ans_key):
                 # wrong ans
                 # draw red box in debug image
                 cv2.rectangle(debug_image, (x1, y1), (x2, y2), (0, 0, 255), 2)
-                
+
                 # draw red box in checked image
                 # cv2.rectangle(checked_image, (x1, y1), (x2, y2), (0, 0, 255), 2)
                 # cv2.putText(checked_image, "+0", (x1 + rw - 5, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 5, cv2.LINE_AA)
@@ -235,8 +382,18 @@ def detect_bubble(image, anchor, roi, debug_image, checked_image, ans_key):
                 pil_draw.text((x1 + rw - 5, y1 - 5), "✘", fill=(255, 86, 86), font=font)
             return ans
 
-# make a circle mark to show marks obtained
+
 def make_circle_mark(obtained, total, diameter=150):
+    """Make a circle mark showing obtained/total marks.
+
+    Args:
+        obtained (int): Marks obtained
+        total (int): Total marks
+        diameter (int): Diameter of the mark
+
+    Returns:
+        PIL.Image: Circle mark image
+    """
     # Canvas (RGBA so it supports transparency)
     img = Image.new("RGBA", (diameter, diameter), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
@@ -291,39 +448,3 @@ def make_circle_mark(obtained, total, diameter=150):
     )
 
     return img
-
-if __name__ == "__main__":
-    logger.info("In main function.")
-    image = cv2.imread('dewarped_test25h9.jpg')
-    preprocessed_image = image.preprocess(image)
-    debug_image = preprocessed_image.copy()
-
-    # detect 25h9 tags
-    detection = apriltags.detect_tags_25h9(preprocessed_image)
-    tag_points = list(map(lambda t: tuple(map(int, t.center.tolist())), detection))
-    tag_points.sort(key = lambda d: d[1])
-    logger.info("tag points: %s.", tag_points)
-
-    show_roi_zones(preprocessed_image, tag_points, debug_image)
-    # cv2.imwrite('debug_roi.jpg', debug_image)
-    answers = []
-
-    for i, point in enumerate(tag_points):
-        logger.debug("In point %s.", i+1)
-        q_left_ans = detect_bubble(preprocessed_image, point, LEFT_QUESTION_ROI, debug_image)
-        q_right_ans = detect_bubble(preprocessed_image, point, RIGHT_QUESTION_ROI, debug_image)
-        answers.extend([q_left_ans, q_right_ans])
-        logger.debug("Q%s: %s.", i*2+1, q_left_ans)
-        logger.debug("Q%s: %s.", i*2+2, q_right_ans)
-    
-    # code for debugging to check a specific question
-    # q_no = 1
-    # tag_point_index = (q_no + 1) // 2
-    # q_roi = LEFT_QUESTION_ROI if q_no % 2 == 1 else RIGHT_QUESTION_ROI
-    # q_ans = detect_bubble(preprocessed_image, tag_points[tag_point_index-1], q_roi, debug_image, checked_image, ans_key[q_no-1])
-    # print(f"Q{q_no}: {q_ans}")
-    
-    logger.info(answers)
-
-    # write final debug image
-    cv2.imwrite('debug_final.jpg', debug_image)

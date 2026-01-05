@@ -11,6 +11,7 @@ env/
 config.json
 .env
 secrets.json
+.pylintrc
 
 # Logs and temp files
 *.log
