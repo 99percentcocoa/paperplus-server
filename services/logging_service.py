@@ -49,7 +49,7 @@ def setup_logging(session_id):
     return log_path
 
 
-def log_to_sheet(sender, fileURL, debugURL, checkedURL, marked, score, logURL):
+def log_to_sheet(sender, file_url, debugURL, checkedURL, marked, score, logURL):
     """Log grading results to Google Sheets.
 
     Creates a payload with grading information and sends it to the configured
@@ -57,7 +57,7 @@ def log_to_sheet(sender, fileURL, debugURL, checkedURL, marked, score, logURL):
 
     Args:
         sender (str): WhatsApp sender identifier
-        fileURL (str): URL of the original uploaded file
+        file_url (str): URL of the original uploaded file
         debugURL (str): URL of the debug processing image
         checkedURL (str): URL of the graded result image
         marked (str): JSON string of detected answers
@@ -66,7 +66,7 @@ def log_to_sheet(sender, fileURL, debugURL, checkedURL, marked, score, logURL):
     """
     payload = {
         "sender": sender,
-        "fileURL": fileURL,
+        "fileURL": file_url,
         "debugURL": debugURL,
         "checkedURL": checkedURL,
         "marked": marked,

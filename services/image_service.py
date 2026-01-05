@@ -8,11 +8,11 @@ and handling tag sorting and worksheet identification.
 
 import os
 import logging
+from pathlib import Path
 import requests
 import cv2  # pylint: disable=no-member
 import numpy as np
 from PIL import Image
-from pathlib import Path
 from tinydb import TinyDB
 from pupil_apriltags import Detector
 from config import SETTINGS
@@ -60,12 +60,12 @@ def download_image(url, session_id, sender_number):
         sender_number (str): Sender's phone number
 
     Returns:
-        tuple: (filepath, fileURL) for the downloaded image
+        tuple: (filepath, file_url) for the downloaded image
     """
     r = requests.get(url, stream=True, timeout=30)
     ext = r.headers.get("Content-Type", "image/jpeg").split("/")[-1]
     filename = f"{session_id}_{sender_number[1:]}.{ext}"
-    fileURL = f"http://{SETTINGS.SERVER_IP}:3000/files/{filename}"
+    file_url = f"http://{SETTINGS.SERVER_IP}:3000/files/{filename}"
 
     filepath = os.path.join(SAVE_DIR, filename)
     with open(filepath, "wb") as f:
@@ -73,7 +73,7 @@ def download_image(url, session_id, sender_number):
             f.write(chunk)
 
     logger.debug("Saved image: %s", filepath)
-    return filepath, fileURL
+    return filepath, file_url
 
 
 def detect_and_validate_corner_tags(filepath):
@@ -117,7 +117,9 @@ def process_image(filepath, corner_tags):
     logger.info("Dewarped image.")
 
     # Prepare checked image (PIL format)
-    checked_img = Image.fromarray(cv2.cvtColor(cropped_img, cv2.COLOR_BGR2RGB)) # pylint: disable=no-member
+    checked_img = Image.fromarray(
+        cv2.cvtColor(cropped_img, cv2.COLOR_BGR2RGB)
+    )  # pylint: disable=no-member
 
     # Save dewarped image
     dewarped_filename = f"{Path(filepath).stem}_dewarped.jpg"
@@ -345,7 +347,7 @@ def sort_detections_clockwise(detections):
     # Reorder detections and IDs
     detections_sorted = [detections[i] for i in sorted_indices]
     ids_sorted = [ids[i] for i in sorted_indices]
-    logging.debug(f"Detected IDs: {ids_sorted}")
+    logger.debug("Detected IDs: %s", ids_sorted)
 
     return detections_sorted
 
@@ -407,14 +409,14 @@ def detect_orientation_and_decode(detection):
     Returns:
         tuple: (worksheet_id, rotated_detections) or (None, None) if not found
     """
-    numRotations = 0
+    num_rotations = 0
 
     for rot in range(4):
         # rot starts with 0
         rotated = rotate(detection, rot)
         tag_ids = [d.tag_id for d in rotated]
-        numRotations += 1
-        print(f"At rotation {numRotations}")
+        num_rotations += 1
+        print(f"At rotation {num_rotations}")
         if tag_ids[0] == ORIENTATION_ID:        # TL found
 
             worksheet_id = decode_from_tags(tag_ids[1], tag_ids[2], tag_ids[3])
@@ -422,7 +424,10 @@ def detect_orientation_and_decode(detection):
 
             # check if worksheet id is in database
             if db.contains(doc_id=worksheet_id):
-                print(f"Found worksheet id {worksheet_id}: {db.get(doc_id=worksheet_id).get('name', '')}")
+                print(
+                    f"Found worksheet id {worksheet_id}: "
+                    f"{db.get(doc_id=worksheet_id).get('name', '')}"
+                )
                 return worksheet_id, rotated
             else:
                 print(f"Worksheet ID {worksheet_id} not found in database.")

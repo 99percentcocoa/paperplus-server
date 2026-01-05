@@ -11,7 +11,7 @@ import requests
 from services.image_service import download_image, detect_and_validate_corner_tags, process_image, sort_detections_clockwise, detect_orientation_and_decode
 from services.grading_service import process_omr_answers, handle_results
 from services.logging_service import log_to_sheet
-from services.communication_service import sendMessage
+from services.communication_service import send_message
 from config import SETTINGS
 
 logger = logging.getLogger(__name__)
@@ -77,10 +77,10 @@ def handle_message(data, session_id):
                 logger.info("Processing valid image message from %s", fromNo)
 
                 # Download the image
-                filepath, fileURL = download_image(image_url, session_id, fromNo)
+                filepath, file_url = download_image(image_url, session_id, fromNo)
 
                 # Send processing message
-                threading.Thread(target=sendMessage, args=(fromNo, "Checking... ⏳ \n कार्यपत्रिका तपासत आहे... ⏳",)).start()
+                threading.Thread(target=send_message, args=(fromNo, "Checking... ⏳ \n कार्यपत्रिका तपासत आहे... ⏳",)).start()
 
                 # Detect and validate corner tags
                 corner_tags, corner_tags_valid = detect_and_validate_corner_tags(filepath)
@@ -103,22 +103,22 @@ def handle_message(data, session_id):
 
                     if omr_success:
                         # Handle successful results
-                        handle_results(filepath, answers, ans_key, debug_img, checked_img, fromNo, fileURL, logURL)
+                        handle_results(filepath, answers, ans_key, debug_img, checked_img, fromNo, file_url, logURL)
                     else:
                         # OMR failed - missing question tags
-                        sendMessage(fromNo, "Please try again. ⟳ \n फोटो परत काढा. ⟳")
+                        send_message(fromNo, "Please try again. ⟳ \n फोटो परत काढा. ⟳")
                 else:
                     # Corner tags detection failed
                     logger.debug("Less/more than 4 corner tags found.")
-                    sendMessage(fromNo, "Please take a complete photo of the worksheet. ⟳ \n कृपया कार्यपत्रिका संपूर्ण दिसेल असा फोटो काढा. ⟳")
+                    send_message(fromNo, "Please take a complete photo of the worksheet. ⟳ \n कृपया कार्यपत्रिका संपूर्ण दिसेल असा फोटो काढा. ⟳")
 
                     # Log failed scan
-                    logsheet_args = (fromNo, fileURL, "", "", "failed", "", logURL)
+                    logsheet_args = (fromNo, file_url, "", "", "failed", "", logURL)
                     threading.Thread(target=log_to_sheet, args=(logsheet_args)).start()
             else:
                 # Handle non-image messages
                 if fromNo:
-                    sendMessage(fromNo, "Please send an image of a scanned worksheet. \n कृप्या केवळ कार्यपत्रिकेचा फोटो काढा.")
+                    send_message(fromNo, "Please send an image of a scanned worksheet. \n कृप्या केवळ कार्यपत्रिकेचा फोटो काढा.")
 
                 # Log failed scan (user message does not contain image)
                 # logsheet_args = (fromNo, "none", "", "", "failed", "", logURL)
