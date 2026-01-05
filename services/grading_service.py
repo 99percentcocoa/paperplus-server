@@ -9,10 +9,10 @@ import os
 import logging
 import json
 import threading
-import cv2  # pylint: disable=no-member
-import numpy as np
 import math
 from pathlib import Path
+import cv2  # pylint: disable=no-member
+import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 from tinydb import TinyDB
 from services.image_service import detect_tags_25h9
@@ -133,7 +133,7 @@ def handle_results(filepath, answers, ans_key, debug_img, checked_img, from_no, 
     # Save checked image with score
     checked_filename = f'checked_{Path(filepath).stem}.jpg'
     checked_filepath = os.path.join(CHECKED_PATH, checked_filename)
-    checked_URL = f"http://{SERVER_IP}:3000/checked/{checked_filename}"
+    checked_url = f"http://{SERVER_IP}:3000/checked/{checked_filename}"
 
     # Add marks circle to checked image
     check_circle = make_circle_mark(score, len(ans_key))
@@ -141,29 +141,31 @@ def handle_results(filepath, answers, ans_key, debug_img, checked_img, from_no, 
     checked_img.save(checked_filepath)
     logger.debug("Saved checked image at %s using PIL.", checked_filepath)
 
-    debugURL = f"http://{SERVER_IP}:3000/debug/{debug_filename}"
+    debug_url = f"http://{SERVER_IP}:3000/debug/{debug_filename}"
 
     # Send results to user
-    send_message(from_no, f"Your marks: {score}/{len(ans_key)} \n तुमचे मार्क: {score}/{len(ans_key)}")
+    send_message(
+        from_no,
+        f"Your marks: {score}/{len(ans_key)} \n" 
+        f"तुमचे मार्क: {score}/{len(ans_key)}")
     logger.info("Sending checked image.")
-    send_image(from_no, checked_URL)
+    send_image(from_no, checked_url)
 
     # Log to Google Sheets
-    logsheet_args = (from_no, file_url, debugURL, checked_URL, json.dumps(answers), score, log_url)
+    logsheet_args = (from_no, file_url, debug_url, checked_url, json.dumps(answers), score, log_url)
     logger.debug("Logging %s", logsheet_args)
-    threading.Thread(target=log_to_sheet, args=(logsheet_args)).start()
+    threading.Thread(target=log_to_sheet, args=logsheet_args).start()
 
 
 # OMR Detection Functions
-def show_roi_zones(image, points, debug_image):
+def show_roi_zones(points, debug_image):
     """Show ROI zones for debugging purposes.
 
     Args:
-        image: Input image
         points: Tag center points
         debug_image: Debug image to draw on
     """
-    for i, point in enumerate(points):
+    for point in points:
         (point_x, point_y) = point
 
         # draw left ROI
@@ -254,17 +256,29 @@ def detect_bubble(image, anchor, roi, debug_image, checked_image, ans_key):
             cX = (x + w // 2) + x1
             cY = (y + h // 2) + y1
 
-        cv2.putText(debug_image, f"{idx+1}", (cX, cY), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2) # Red text
+        cv2.putText(
+            debug_image,
+            f"{idx+1}",
+            (cX, cY),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.5,
+            (0, 0, 255),
+            2) # Red text
 
         area = cv2.contourArea(cnt)
         perimeter = cv2.arcLength(cnt, True)
         if perimeter == 0:
             continue
         circularity = 4 * math.pi * (area / (perimeter * perimeter))
-        logger.debug("Contour %s: area = %s, perimiter = %s, circularity = %s.", idx+1, area, perimeter, circularity)
+        logger.debug("Contour %s: area = %s, perimiter = %s, circularity = %s.",
+        idx+1,
+        area,
+        perimeter,
+        circularity)
 
         # contour checks: 1. area, 2. circularity
-        # if there are still more than 4, check if they are evenly spaced and horizontal, and remove the y outlier (todo)
+        # if there are still more than 4, check if they are
+        # evenly spaced and horizontal, and remove the y outlier (todo)
 
         # 1. area condition
         if MIN_MARK_AREA < area < MAX_MARK_AREA:
@@ -293,7 +307,9 @@ def detect_bubble(image, anchor, roi, debug_image, checked_image, ans_key):
         bubble_area = cv2.contourArea(cnt)
         bubble_perimeter = cv2.arcLength(cnt, True)
         bubble_circularity = 4 * math.pi * (bubble_area / (bubble_perimeter * bubble_perimeter))
-        logger.info("Bubble %s: fill_ratio = %s, area = %s, circularity = %s.", chr(65+i), fill_ratio, bubble_area, bubble_circularity)
+        logger.info(
+            "Bubble %s: fill_ratio = %s, area = %s, circularity = %s.",
+            chr(65+i), fill_ratio, bubble_area, bubble_circularity)
 
         color = (0, 255, 0)
         if fill_ratio > FILL_THRESHOLD:
@@ -438,7 +454,7 @@ def make_circle_mark(obtained, total, diameter=150):
     bottom_text = str(total)
     bbox2 = draw.textbbox((0, 0), bottom_text, font=font)
     tw2 = bbox2[2] - bbox2[0]
-    th2 = bbox2[3] - bbox2[1]
+    # th2 = bbox2[3] - bbox2[1]
 
     draw.text(
         ((diameter - tw2) // 2, center_y),

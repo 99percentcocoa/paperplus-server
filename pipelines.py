@@ -126,14 +126,14 @@ def check_e2e(fp):
         # save checked image
         checked_filename = f'checked_{Path(fp).stem}.jpg'
         checked_filepath = os.path.join(TESTING_PATH, checked_filename)
-        # checked_URL = f"http://{SERVER_IP}:3000/checked/{checked_filename}"
+        # checked_url = f"http://{SERVER_IP}:3000/checked/{checked_filename}"
         # cv2.imwrite(checked_filepath, checked_img)
         check_circle = omr_detection.make_circle_mark(score, len(ans_key))
         checked_img.paste(check_circle, (100, 50), check_circle)
         checked_img.save(checked_filepath)
         print(f"Saved checked image at {checked_filepath}.")
 
-        # debugURL = f"http://{SERVER_IP}:3000/debug/{debug_filename}"
+        # debug_url = f"http://{SERVER_IP}:3000/debug/{debug_filename}"
 
         # send message with reply
         # sendmessage.sendMessage(fromNo, "Your answers:\n"+'\n '.join(f"{i}. {item}" for i, item in enumerate(answers, start=1)))
