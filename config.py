@@ -30,6 +30,9 @@ class Config:
     TARGET_WIDTH = 1240
     TARGET_HEIGHT = 1754
 
+    DEFAULT_NUM_QUESTIONS = 20
+    NUM_ROW_TAGS = 10
+
     # roi format: (x_offset, y_offset, width, height)
     LEFT_QUESTION_ROI = (85, -40, 475, 85)
     RIGHT_QUESTION_ROI = (620, -40, 475, 85)
