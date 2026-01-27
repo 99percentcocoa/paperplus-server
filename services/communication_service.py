@@ -85,3 +85,34 @@ def send_image(to_number, img_url):
     response = requests.post(url=api_url, data=payload, headers=headers, auth=HTTPBasicAuth(
         EXOTEL_KEY, EXOTEL_TOKEN), timeout=(10, 30))
     logger.info(response.content)
+
+def is_valid_image_message(message):
+    """Check if message is a valid incoming image message and extract image URL.
+
+    Args:
+        message (dict): WhatsApp message object
+
+    Returns:
+        tuple: (is_valid, image_url, sender_number) or (False, None, None)
+    """
+    from_no = message.get("from")
+    callback_type = message.get("callback_type")
+
+    # Filter out non-incoming messages
+    if callback_type and callback_type != "incoming_message":
+        logger.info("Received delivery message. Continuing...")
+        return False, None, None
+
+    content = message.get("content", {})
+    if not content:
+        logger.info("No content found. Skipping...")
+        return False, None, None
+
+    if content.get("type") == "image" and "image" in content:
+        img = content["image"]
+        url = img.get("url") or img.get("link")
+        if not url:
+            return False, None, None
+        return True, url, from_no
+
+    return False, None, None
