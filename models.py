@@ -2,7 +2,6 @@ from dataclasses import dataclass, field
 from typing import List, Optional
 from pathlib import Path
 
-from services.image_service import detect_tags_36h11, detect_tags_25h9, scan_image
 from config import SETTINGS
 
 import cv2
@@ -101,6 +100,11 @@ class DetectionResult:
         if self.tag_family == "36h11":
             if num_detections < 4:
                 raise ValueError(f"Tag family '36h11' requires at least 4 detections, but got {num_detections}")
+            
+            # Lazy import to avoid circular dependency
+            from services.image_service import sort_detections_clockwise
+            self.sorted_detections = sort_detections_clockwise(self.detections)
+
         elif self.tag_family == "25h9":
             required_detections = SETTINGS.NUM_ROW_TAGS
             if num_detections < required_detections:
@@ -109,51 +113,55 @@ class DetectionResult:
             # Filter out detections with tag_id outside valid range [0, required_detections-1]
             valid_detections = [d for d in self.detections if 0 <= d.tag_id < required_detections]
             self.detections = valid_detections
+            
+            # Sort 25h9 detections from top to bottom by Y-coordinate
+            self.sorted_detections = sorted(self.detections, key=lambda d: d.center[1])
         
+        # save tag_ids as list of int
         self.tag_ids = [detection.tag_id for detection in self.detections]
-        self.sorted_detections = self.sort_detections_clockwise()
+           
     
-    def sort_detections_clockwise(self) -> List[AprilTagDetection]:
-        """Return detections ordered as: top-left, top-right, bottom-right, bottom-left.
+    # def sort_detections_clockwise(self) -> List[AprilTagDetection]:
+    #     """Return detections ordered as: top-left, top-right, bottom-right, bottom-left.
         
-        If there are exactly 4 detections (e.g., corner tags), we sort them
-        by splitting into top and bottom pairs using the Y coordinate, then
-        ordering each pair by X. For other counts, we fall back to angle-based
-        ordering around the centroid.
+    #     If there are exactly 4 detections (e.g., corner tags), we sort them
+    #     by splitting into top and bottom pairs using the Y coordinate, then
+    #     ordering each pair by X. For other counts, we fall back to angle-based
+    #     ordering around the centroid.
         
-        Returns:
-            List of AprilTagDetection ordered for perspective transforms.
-        """
-        if len(self.detections) < 4:
-            raise ValueError("At least 4 detections are required to sort.")
+    #     Returns:
+    #         List of AprilTagDetection ordered for perspective transforms.
+    #     """
+    #     if len(self.detections) < 4:
+    #         raise ValueError("At least 4 detections are required to sort.")
 
-        centers = np.array([d.center for d in self.detections], dtype=float)
+    #     centers = np.array([d.center for d in self.detections], dtype=float)
 
-        # Corner ordering only when we have exactly 4 detections
-        if len(self.detections) == 4:
-            ys = centers[:, 1]
-            xs = centers[:, 0]
+    #     # Corner ordering only when we have exactly 4 detections
+    #     if len(self.detections) == 4:
+    #         ys = centers[:, 1]
+    #         xs = centers[:, 0]
 
-            # Indices sorted by Y (top to bottom)
-            y_sorted = np.argsort(ys)
-            top_idx = y_sorted[:2]
-            bottom_idx = y_sorted[2:]
+    #         # Indices sorted by Y (top to bottom)
+    #         y_sorted = np.argsort(ys)
+    #         top_idx = y_sorted[:2]
+    #         bottom_idx = y_sorted[2:]
 
-            # Sort top pair by X ascending -> TL, TR
-            top_order = top_idx[np.argsort(xs[top_idx])]
+    #         # Sort top pair by X ascending -> TL, TR
+    #         top_order = top_idx[np.argsort(xs[top_idx])]
 
-            # Sort bottom pair by X ascending -> BL, BR; we want BR, BL
-            bottom_by_x = bottom_idx[np.argsort(xs[bottom_idx])]
-            bl_idx, br_idx = bottom_by_x[0], bottom_by_x[1]
+    #         # Sort bottom pair by X ascending -> BL, BR; we want BR, BL
+    #         bottom_by_x = bottom_idx[np.argsort(xs[bottom_idx])]
+    #         bl_idx, br_idx = bottom_by_x[0], bottom_by_x[1]
 
-            ordered_indices = [top_order[0], top_order[1], br_idx, bl_idx]
-            return [self.detections[i] for i in ordered_indices]
+    #         ordered_indices = [top_order[0], top_order[1], br_idx, bl_idx]
+    #         return [self.detections[i] for i in ordered_indices]
 
-        # Fallback: angle-based order around centroid for non-4 counts
-        cx, cy = np.mean(centers, axis=0)
-        angles = np.arctan2(centers[:, 1] - cy, centers[:, 0] - cx)
-        sorted_indices = np.argsort(angles)
-        return [self.detections[i] for i in sorted_indices]
+    #     # Fallback: angle-based order around centroid for non-4 counts
+    #     cx, cy = np.mean(centers, axis=0)
+    #     angles = np.arctan2(centers[:, 1] - cy, centers[:, 0] - cx)
+    #     sorted_indices = np.argsort(angles)
+    #     return [self.detections[i] for i in sorted_indices]
 
 
 @dataclass
