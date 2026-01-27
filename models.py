@@ -2,13 +2,13 @@ from dataclasses import dataclass, field
 from typing import List, Optional
 from pathlib import Path
 
-from services.image_service import detect_tags_36h11, detect_tags_25h9
+from services.image_service import detect_tags_36h11, detect_tags_25h9, scan_image
 from config import SETTINGS
 
 import cv2
 import numpy as np
 from pupil_apriltags import Detection as AprilTagDetection
-from PIL import Image as PILImage
+from PIL.Image import Image as PILImage
 
 @dataclass
 class InputImageMeta:
@@ -160,15 +160,17 @@ class DetectionResult:
 class WorksheetTemplate:
     """Metadata for a worksheet template."""
     input_image: InputImageMeta
-    debug_image: InputImageMeta
-    cropped_image: InputImageMeta
-    preprocessed_image: InputImageMeta
-    checked_image: PILImage
-    num_questions: int
-    worksheet_id: int
-    marked_answers: List[str]
-    answer_key: List[str]
-    score: int
+    cropped_image: Optional[InputImageMeta] = None
+    preprocessed_image: Optional[InputImageMeta] = None
+    corner_detections: Optional[DetectionResult] = None
+    row_detections: Optional[DetectionResult] = None
+    debug_image: Optional[InputImageMeta] = None
+    checked_image: Optional[PILImage] = None
+    num_questions: Optional[int] = None
+    worksheet_id: Optional[int] = None
+    marked_answers: Optional[List[str]] = None
+    answer_key: Optional[List[str]] = None
+    score: Optional[int] = None
 
 
 @dataclass
