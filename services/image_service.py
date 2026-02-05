@@ -14,6 +14,7 @@ import cv2  # pylint: disable=no-member
 import numpy as np
 from tinydb import TinyDB
 from pupil_apriltags import Detector
+from PIL import Image
 from config import SETTINGS
 from models import DetectionResult, InputImageMeta, WorksheetTemplate
 
@@ -131,13 +132,14 @@ def download_image(url, session_id, sender_number):
     return corner_tags, len(corner_tags) == 4
 
 
-def scan_image(input_image: InputImageMeta):
+def scan_image(input_image: InputImageMeta) -> WorksheetTemplate:
     """Process image: dewarp, clean, and prepare for OMR.
 
     Args:
         input_image (InputImageMeta): Metadata of the original image
 
     Returns:
+        worksheet_template: (WorksheetTemplate) containing metadata of cropped image, preprocessed image, debug image and detections.
         cropped_image: (InputImageMeta) Metadata of the cropped image.
         preprocessed_image: (InputImageMeta) Metadata of the preprocessed image.
         corner_detections: (DetectionResult) Result of AprilTag detections.
@@ -148,7 +150,23 @@ def scan_image(input_image: InputImageMeta):
     row_detections = detect_apriltags(cropped_image, "25h9")
     preprocessed_image = clean_document(cropped_image)
 
-    return cropped_image, preprocessed_image, corner_detections, row_detections, worksheet_id
+    debug_image = cropped_image
+
+    checked_image = Image.fromarray(cv2.cvtColor(cropped_image.image_array, cv2.COLOR_BGR2RGB))  # pylint: disable=no-member
+
+
+    worksheet_template = WorksheetTemplate(
+        input_image=input_image,
+        cropped_image=cropped_image,
+        preprocessed_image=preprocessed_image,
+        corner_detections=corner_detections,
+        row_detections=row_detections,
+        worksheet_id=worksheet_id,
+        debug_image=debug_image,
+        checked_image=checked_image
+    )
+
+    return worksheet_template
 
 
 # AprilTag Detection Functions
@@ -239,7 +257,7 @@ def detect_tags_25h9(image_input):
 #     return dewarped
 
 # crop image using corner tags
-def crop_image(input_image: InputImageMeta, detections: DetectionResult) -> InputImageMeta:
+def crop_image(input_image: InputImageMeta, detections: DetectionResult) -> tuple[InputImageMeta, int]:
     """Crop the input image using the detected AprilTags.
 
     Args:
