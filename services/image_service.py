@@ -16,7 +16,7 @@ from tinydb import TinyDB
 from pupil_apriltags import Detector
 from PIL import Image
 from config import SETTINGS
-from models import DetectionResult, InputImageMeta, WorksheetTemplate
+from models import DetectionResult, InputImageMeta, WorksheetTemplate, ROI
 
 logger = logging.getLogger(__name__)
 
@@ -195,7 +195,6 @@ def detect_tags_36h11(image_input):
     detection = at_detector_36h11.detect(gray_img)
     return detection
 
-
 def detect_tags_25h9(image_input):
     """Detect AprilTags using 25h9 family.
 
@@ -299,17 +298,21 @@ def crop_image(input_image: InputImageMeta, detections: DetectionResult) -> tupl
     return InputImageMeta(image_array=warped_image), worksheet_id
 
 # get cropped ROI images from worksheet
-def get_roi_images(worksheet_meta: WorksheetTemplate) -> list[InputImageMeta]:
-    """Get cropped ROI images for each question.
+def get_roi_coordinates(worksheet_meta: WorksheetTemplate) -> list[ROI]:
+    """Get ROI coordinates for each question. Also draw on the ROIs in the debug file.
 
     Args:
         worksheet_meta: Metadata of the worksheet including images and detections
     
     Returns:
-        List of InputImageMeta objects for each question's ROI
+        List of ROI objects for each question's ROI
     """
-    roi_images = []
+    roi_coordinates = []
+
     row_detections = worksheet_meta.row_detections.sorted_detections
+    logger.debug("Row detections for ROI cropping: %s", [d.tag_id for d in row_detections])
+
+    debug_image = worksheet_meta.debug_image.image_array
 
     for i, detection in enumerate(row_detections):
         logger.debug("In detection %d", i)
@@ -325,11 +328,12 @@ def get_roi_images(worksheet_meta: WorksheetTemplate) -> list[InputImageMeta]:
 
             logger.info("ROI coordinates: %s, %s to %s, %s.", x1, y1, x2, y2)
 
-            # Crop the ROI from the preprocessed image
-            cropped_roi = worksheet_meta.preprocessed_image.image_array[y1:y2, x1:x2]
-            roi_images.append(InputImageMeta(image_array=cropped_roi))
+            # draw green boundary around ROI in debug image
+            # cv2.rectangle(debug_image, (x1, y1), (x2, y2), (0, 255, 0), 2)
 
-    return roi_images
+            roi_coordinates.append(ROI(x1, y1, x2, y2))
+
+    return roi_coordinates
 
 # def clean_document(img):
 #     """Clean and preprocess document image for OMR.
@@ -606,19 +610,19 @@ def detect_orientation_and_decode(detection: DetectionResult):
                 return None
     return None  # some error
 
-def save_preprocessed(preprocessed_image: InputImageMeta):
-    """Save preprocessed image to DEWARPED_PATH with modified filename.
+def save_preprocessed(worksheet_meta: WorksheetTemplate) -> WorksheetTemplate:
+    """Save preprocessed image (already contained in WorksheetTemplate) to DEWARPED_PATH with modified filename.
 
     Args:
-        preprocessed_image (InputImageMeta): Metadata of the preprocessed image.
+        worksheet_meta (WorksheetTemplate): Metadata of the worksheet.
     
     Returns:
-        InputImageMeta: Updated metadata with new file path.
+        WorksheetTemplate: Updated metadata with new preprocessed file path.
     """
-    preprocessed_filename = f"{Path(preprocessed_image.image_path).stem}_preprocessed.jpg"
+    original_path = worksheet_meta.input_image.image_path
+    preprocessed_filename = f"{Path(original_path).stem}_preprocessed.jpg"
     preprocessed_filepath = Path(DEWARPED_DIR) / preprocessed_filename
-    preprocessed_image.image_path = str(preprocessed_filepath)
-    preprocessed_image.save()
+    worksheet_meta.preprocessed_image.save(preprocessed_filepath)
     logger.debug("Saved preprocessed image to %s", preprocessed_filepath)
 
-    return preprocessed_image
+    return worksheet_meta
