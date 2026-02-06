@@ -139,7 +139,7 @@ def check_worksheet(worksheet_meta: WorksheetTemplate) -> Tuple[List[str], List[
 
             # draw rectangle around ROI in checked image and write ✔ near top-right
             pil_draw.rectangle([(x1, y1), (x2, y2)], fill=None, outline=(0, 127, 0))
-            pil_draw.text((x1 + roi_coordinate.width - 5, y1 - 5), "✔", fill=(0, 127, 0), font=font)
+            pil_draw.text((x1 + roi_coordinate.width() - 5, y1 - 5), "✔", fill=(0, 127, 0), font=font)
         else:
             score.append(0)
             logger.debug("Question %s incorrect.", q_no)
@@ -149,7 +149,7 @@ def check_worksheet(worksheet_meta: WorksheetTemplate) -> Tuple[List[str], List[
 
             # draw rectangle around ROI in checked image and write X near top-right
             pil_draw.rectangle([(x1, y1), (x2, y2)], fill=None, outline=(255, 86, 86))
-            pil_draw.text((x1 + roi_coordinate.width - 5, y1 - 5), "✘", fill=(255, 86, 86), font=font)
+            pil_draw.text((x1 + roi_coordinate.width() - 5, y1 - 5), "✘", fill=(255, 86, 86), font=font)
 
     # save score
     worksheet_meta.score = score

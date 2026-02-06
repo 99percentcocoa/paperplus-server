@@ -152,9 +152,9 @@ def scan_image(input_image: InputImageMeta) -> WorksheetTemplate:
         corner_detections: (DetectionResult) Result of AprilTag detections.
     """
 
-    corner_detections = detect_apriltags(input_image, "36h11").sorted_detections
-    cropped_image, worksheet_id = crop_image(input_image, corner_detections)
-    row_detections = detect_apriltags(cropped_image, "25h9").sorted_detections
+    corner_detection_result = detect_apriltags(input_image, "36h11")
+    cropped_image, worksheet_id = crop_image(input_image, corner_detection_result)
+    row_detection_result = detect_apriltags(cropped_image, "25h9")
     preprocessed_image = clean_document(cropped_image)
 
     debug_image = cropped_image
@@ -166,8 +166,8 @@ def scan_image(input_image: InputImageMeta) -> WorksheetTemplate:
         input_image=input_image,
         cropped_image=cropped_image,
         preprocessed_image=preprocessed_image,
-        corner_detections=corner_detections,
-        row_detections=row_detections,
+        corner_detections=corner_detection_result,
+        row_detections=row_detection_result,
         worksheet_id=worksheet_id,
         debug_image=debug_image,
         checked_image=checked_image
@@ -325,10 +325,10 @@ def get_roi_coordinates(worksheet_meta: WorksheetTemplate) -> list[ROI]:
         for _, roi in enumerate([LEFT_QUESTION_ROI, RIGHT_QUESTION_ROI]):
 
             (rx, ry, rw, rh) = roi
-            x1 = anchor_x + rx
-            y1 = anchor_y + ry
-            x2 = x1 + rw
-            y2 = y1 + rh
+            x1 = int(anchor_x + rx)
+            y1 = int(anchor_y + ry)
+            x2 = int(x1 + rw)
+            y2 = int(y1 + rh)
 
             logger.info("ROI coordinates: %s, %s to %s, %s.", x1, y1, x2, y2)
 
@@ -625,7 +625,7 @@ def save_preprocessed(worksheet_meta: WorksheetTemplate) -> None:
     """
     original_path = worksheet_meta.input_image.image_path
     preprocessed_filename = f"{Path(original_path).stem}_preprocessed.jpg"
-    preprocessed_filepath = Path(DEWARPED_DIR) / preprocessed_filename
+    preprocessed_filepath = Path(SETTINGS.DEWARPED_PATH) / preprocessed_filename
     worksheet_meta.preprocessed_image.save(preprocessed_filepath)
     logger.debug("Saved preprocessed image to %s", preprocessed_filepath)
 
@@ -640,7 +640,7 @@ def save_debug(worksheet_meta: WorksheetTemplate) -> None:
     """
     original_path = worksheet_meta.input_image.image_path
     debug_filename = f"{Path(original_path).stem}_debug.jpg"
-    debug_filepath = Path(DEBUG_PATH) / debug_filename
+    debug_filepath = Path(SETTINGS.DEBUG_PATH) / debug_filename
     debug_url = f"http://{SERVER_IP}:3000/debug/{debug_filename}"
     worksheet_meta.debug_image.save(debug_filepath)
     worksheet_meta.debug_image.image_url = debug_url
@@ -666,7 +666,7 @@ def save_checked(worksheet_meta: WorksheetTemplate) -> None:
 
     original_path = worksheet_meta.input_image.image_path
     checked_filename = f"{Path(original_path).stem}_checked.jpg"
-    checked_filepath = Path(CHECKED_PATH) / checked_filename
+    checked_filepath = Path(SETTINGS.CHECKED_PATH) / checked_filename
 
     # add marks circle to checked image
     check_circle = make_circle_mark(score, len(ans_key))
