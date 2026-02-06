@@ -11,16 +11,17 @@ import json
 import threading
 import math
 from pathlib import Path
+from typing import Tuple, List
 import cv2  # pylint: disable=no-member
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 from tinydb import TinyDB
-from services.image_service import detect_tags_25h9
+from services.image_service import detect_tags_25h9, get_roi_coordinates
 from services.communication_service import send_message, send_image
 from services.logging_service import log_to_sheet
 from config import SETTINGS
 from utils.grading_utils import check_results
-from models import InputImageMeta, DetectionResult, WorksheetTemplate, ContourData
+from models import InputImageMeta, DetectionResult, WorksheetTemplate, ContourData, ROI
 
 logger = logging.getLogger(__name__)
 
@@ -37,8 +38,8 @@ FILL_THRESHOLD = SETTINGS.FILL_THRESHOLD
 MIN_CIRCULARITY = SETTINGS.MIN_CIRCULARITY
 
 
-def process_omr_answers(worksheet: WorksheetTemplate):
-    """Process OMR answers using 25h9 tags.
+def check_worksheet(worksheet_meta: WorksheetTemplate):
+    """Process OMR answers using 25h9 tags. Also draw on debug, checked images.
 
     Args:
         dewarped_img: Processed image for OMR
@@ -51,60 +52,120 @@ def process_omr_answers(worksheet: WorksheetTemplate):
     """
     # Load answer key from database
     db = TinyDB('worksheets.json')
-    ans_key = db.get(doc_id=worksheet.worksheet_id).get('answerKey')
-    worksheet.answer_key = ans_key
-    logger.info("Answer key for worksheet %s: %s", worksheet.worksheet_id, ans_key)
-
-    # Detect 25h9 tags for questions
-    # detection_25h9 = detect_tags_25h9(dewarped_img)
-    # detected_tags_25h9 = list(map(lambda x: x.tag_id, detection_25h9))
-    # logger.debug("Detected question tags: %s", detected_tags_25h9)
-
-    # # Verify 25h9 tags detection
-    # required = set(range(1, 11))
-    # present = set(detected_tags_25h9)
-
-    # if not required.issubset(present):
-    #     missing = required - present
-    #     logger.debug("Missing 25h9 tags: %s", missing)
-    #     return None, None, False  # Failed - missing tags
-
-    # # Remove extra tags if any
-    # extra = present - required
-    # if extra:
-    #     logger.debug("Extra tags detected: %s", extra)
-    #     detection_25h9[:] = [d for d in detection_25h9 if d.tag_id not in list(extra)]
-    #     detected_tags_25h9 = list(map(lambda x: x.tag_id, detection_25h9))
-    #     logger.debug("Extra tags removed, new list: %s", detected_tags_25h9)
-    # else:
-    #     logger.info("All 25h9 tags are correct.")
+    ans_key = db.get(doc_id=worksheet_meta.worksheet_id).get('answerKey')
+    worksheet_meta.answer_key = ans_key
+    logger.info("Answer key for worksheet %s: %s", worksheet_meta.worksheet_id, ans_key)
 
     # Process answers for each tag
     answers = []
-    tag_points = list(map(lambda t: tuple(map(int, t.center.tolist())), worksheet.row_detections.detections))
 
-    for i, point in enumerate(tag_points):
-        logger.debug("Processing point %s.", i+1)
+    roi_coordinates = get_roi_coordinates(worksheet_meta)
+    logging.debug("Extracted %s ROI images for OMR processing.", len(roi_coordinates))
 
-        # Left question
-        q_left_ans_key = ans_key[i*2]
-        logger.debug("Processing question %s.", i*2+1)
-        q_left_ans = detect_bubble(
-            worksheet.preprocessed_image.image_array, point, LEFT_QUESTION_ROI,
-            debug_img, checked_img, q_left_ans_key
-        )
+    # debug image, PIL setup
+    debug_image_array = worksheet_meta.debug_image.image_array
+    font = ImageFont.truetype("NotoSansSymbols2-Regular.ttf", 60)
+    pil_draw = ImageDraw.Draw(worksheet_meta.checked_image)
 
-        # Right question
-        q_right_ans_key = ans_key[i*2+1]
-        logger.debug("Processing question %s.", i*2+2)
-        q_right_ans = detect_bubble(
-            dewarped_img, point, RIGHT_QUESTION_ROI,
-            debug_img, checked_img, q_right_ans_key
-        )
+    for i, roi_coordinate in enumerate(roi_coordinates):
+        # roi coordinates x1, y1, x2, y2
+        x1, y1, x2, y2 = roi_coordinate.x1, roi_coordinate.y1, roi_coordinate.x2, roi_coordinate.y2
 
-        answers.extend([q_left_ans, q_right_ans])
-        logger.debug("Q%s: %s.", i*2+1, q_left_ans)
-        logger.debug("Q%s: %s.", i*2+2, q_right_ans)
+        q_no = i + 1
+        q_ans = ans_key[i]
+        logger.debug("Processing ROI %s", q_no)
+
+        roi_image_array = worksheet_meta.preprocessed_image.image_array[
+            y1:y2, 
+            x1:x2
+        ]
+
+        ans, all_contours, bubble_candidates = detect_bubble(InputImageMeta(image_array=roi_image_array))
+
+        answers.append(ans)
+        logger.debug("Detected answer for question %s: %s (Correct answer: %s)", q_no, ans, q_ans)
+
+        # draw all contours on debug image for visualization
+        for idx, contour_meta in enumerate(all_contours):
+            cnt = contour_meta.contour
+            cnt_global = contour_meta.get_global_contour(roi_coordinate.x1, roi_coordinate.y1)
+            cv2.drawContours(debug_image_array, [cnt_global], -1, (0, 0, 255), 1)
+
+            # label the contour for debugging
+            M = cv2.moments(cnt)
+            if M["m00"] != 0:
+                cX = int(M["m10"] / M["m00"]) + x1
+                cY = int(M["m01"] / M["m00"]) + y1
+            else:
+                x, y, w, h = cv2.boundingRect(cnt)
+                cX = (x + w // 2) + x1
+                cY = (y + h // 2) + y1
+
+            cv2.putText(
+                debug_image_array,
+                f"{idx+1}",
+                (cX, cY),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (0, 0, 255),
+                2) # Red text
+        
+        # draw and label bubble candidates as A, B, C, and D
+        for idx, contour_meta in enumerate(bubble_candidates):
+            x, y, w, h = cv2.boundingRect(contour_meta.contour)
+
+            color = (0, 255, 0) if chr(65+idx) == q_ans else (255, 86, 86)
+            cnt_global = contour_meta.contour + np.array([[[x1, y1]]])
+
+            cv2.drawContours(debug_image_array, [cnt_global], -1, color, 2)
+            cv2.putText(debug_image_array,
+                        f"{chr(65+idx)}",
+                        (x1 + x, y1 + y - 5),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1, cv2.LINE_AA)
+
+        # draw box around ROI based on correct or not
+        if ans == q_ans:
+            logger.debug("Question %s correct.", q_no)
+
+            # draw rectangle around ROI in debug image
+            cv2.rectangle(debug_image_array, (x1, y1), (x2, y2), (0, 255, 0), 2)
+
+            # draw rectangle around ROI in checked image and write ✔ near top-right
+            pil_draw.rectangle([(x1, y1), (x2, y2)], fill=None, outline=(0, 127, 0))
+            pil_draw.text((x1 + roi_coordinate.width - 5, y1 - 5), "✔", fill=(0, 127, 0), font=font)
+        else:
+            logger.debug("Question %s incorrect.", q_no)
+
+            # draw rectangle around ROI in debug image
+            cv2.rectangle(debug_image_array, (x1, y1), (x2, y2), (255, 86, 86), 2)
+
+            # draw rectangle around ROI in checked image and write X near top-right
+            pil_draw.rectangle([(x1, y1), (x2, y2)], fill=None, outline=(255, 86, 86))
+            pil_draw.text((x1 + roi_coordinate.width - 5, y1 - 5), "✘", fill=(255, 86, 86), font=font)
+
+    
+    # for i, point in enumerate(tag_points):
+    #     logger.debug("Processing point %s.", i+1)
+
+    #     # Left question
+    #     q_left_ans_key = ans_key[i*2]
+    #     logger.debug("Processing question %s.", i*2+1)
+    #     q_left_ans = detect_bubble(
+    #         worksheet.preprocessed_image.image_array, point, LEFT_QUESTION_ROI,
+    #         debug_img, checked_img, q_left_ans_key
+    #     )
+
+    #     # Right question
+    #     q_right_ans_key = ans_key[i*2+1]
+    #     logger.debug("Processing question %s.", i*2+2)
+    #     q_right_ans = detect_bubble(
+    #         dewarped_img, point, RIGHT_QUESTION_ROI,
+    #         debug_img, checked_img, q_right_ans_key
+    #     )
+
+    #     answers.extend([q_left_ans, q_right_ans])
+    #     logger.debug("Q%s: %s.", i*2+1, q_left_ans)
+    #     logger.debug("Q%s: %s.", i*2+2, q_right_ans)
 
     logger.info("Finished checking answers.")
     return answers, ans_key, True
@@ -191,45 +252,32 @@ def show_roi_zones(points, debug_image):
         cv2.rectangle(debug_image, (right_x1, right_y1), (right_x2, right_y2), (255, 0, 0), 2)
 
 
-def detect_bubble(worksheet_meta: WorksheetTemplate, q_no: int):
-    """Detect filled bubble given anchor point and roi.
+# def detect_bubble(worksheet_meta: WorksheetTemplate, roi_coordinates: ROI) -> str:
+def detect_bubble(roi_image: InputImageMeta) -> tuple[str, list[ContourData], list[ContourData]]:
+    """Detect filled bubble cropped ROI image. Also draw on debug and checked images.
 
     Args:
-        worksheet_meta: Metadata of the worksheet including images and detections
-        q_no: Question number to detect bubble for
+        roi_coordinates (ROI): Coordinates of the cropped ROI image for a single question
 
     Returns:
-        str: Detected answer ('A', 'B', 'C', 'D') or '' if none/multiple detected
+        str: Detected answer ('A', 'B', 'C', 'D') or '' if none/multiple detected,
+        List of ContourData for all contours found,
+        List of ContourData for contours that passed filtering criteria
     """
 
-    # next((x for x in test_list if x.value == value), None)
-
-    # find the right detection as per question num
-    (anchor_x, anchor_y) = next((anchor for anchor in worksheet_meta.row_detections if anchor.tag_id == q_no), None)
-
-    # figure out from the question number whether to use left or right ROI
-    if q_no % 2 == 1:
-        roi = LEFT_QUESTION_ROI
-    else:
-        roi = RIGHT_QUESTION_ROI
+    # x1, y1, x2, y2 = roi_coordinates.x1, roi_coordinates.y1, roi_coordinates.x2, roi_coordinates.y2
+    # rw = roi_coordinates.width()
     
-    (rx, ry, rw, rh) = roi
+    # debug_image = worksheet_meta.debug_image.image_array
 
-    x1 = anchor_x + rx
-    y1 = anchor_y + ry
-    x2 = x1 + rw
-    y2 = y1 + rh
-
-    logger.info("ROI coordinates: %s, %s to %s, %s.", x1, y1, x2, y2)
+    # logger.info("ROI coordinates: %s, %s to %s, %s.", x1, y1, x2, y2)
 
     # PIL setup for adding tick and cross marks
-    font = ImageFont.truetype("NotoSansSymbols2-Regular.ttf", 60)
-    pil_draw = ImageDraw.Draw(worksheet_meta.checked_image)
+    # font = ImageFont.truetype("NotoSansSymbols2-Regular.ttf", 60)
+    # pil_draw = ImageDraw.Draw(worksheet_meta.checked_image)
 
-    # draw green rectangle around ROI in debug image
-    # cv2.rectangle(debug_image, (x1, y1), (x2, y2), (0, 255, 0), 2)
-
-    q_crop = image[y1:y2, x1:x2]
+    # q_crop = worksheet_meta.preprocessed_image.image_array[y1:y2, x1:x2]
+    q_crop = roi_image.image_array
     # cv2.imwrite('q_crop.jpg', q_crop)
 
     gray_crop = cv2.cvtColor(q_crop, cv2.COLOR_BGR2GRAY)
@@ -248,42 +296,45 @@ def detect_bubble(worksheet_meta: WorksheetTemplate, q_no: int):
     logger.info("%s contours found in ROI.", len(contours))
 
     # array of contours
-    bubble_candidates = []
+    bubble_candidates: List[ContourData] = []
+    all_contours: List[ContourData] = [ContourData(contour=cnt) for cnt in contours]
 
-    for idx, cnt in enumerate(contours):
-        # draw every contour in red in debug image
-        cnt_global = cnt + np.array([[[x1, y1]]])
-        cv2.drawContours(debug_image, [cnt_global], -1, (0, 0, 255), 1)
+    for idx, contour_meta in enumerate(all_contours):
+        # # draw every contour in red in debug image
+        # cnt_global = cnt + np.array([[[x1, y1]]])
+        # cv2.drawContours(debug_image, [cnt_global], -1, (0, 0, 255), 1)
 
-        # label the contour for debugging
-        M = cv2.moments(cnt)
-        if M["m00"] != 0:
-            cX = int(M["m10"] / M["m00"]) + x1
-            cY = int(M["m01"] / M["m00"]) + y1
-        else:
-            x, y, w, h = cv2.boundingRect(cnt)
-            cX = (x + w // 2) + x1
-            cY = (y + h // 2) + y1
+        # # label the contour for debugging
+        # M = cv2.moments(cnt)
+        # if M["m00"] != 0:
+        #     cX = int(M["m10"] / M["m00"]) + x1
+        #     cY = int(M["m01"] / M["m00"]) + y1
+        # else:
+        #     x, y, w, h = cv2.boundingRect(cnt)
+        #     cX = (x + w // 2) + x1
+        #     cY = (y + h // 2) + y1
 
-        cv2.putText(
-            debug_image,
-            f"{idx+1}",
-            (cX, cY),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.5,
-            (0, 0, 255),
-            2) # Red text
+        # cv2.putText(
+        #     debug_image,
+        #     f"{idx+1}",
+        #     (cX, cY),
+        #     cv2.FONT_HERSHEY_SIMPLEX,
+        #     0.5,
+        #     (0, 0, 255),
+        #     2) # Red text
 
-        area = cv2.contourArea(cnt)
-        perimeter = cv2.arcLength(cnt, True)
+        area = contour_meta.area
+        perimeter = contour_meta.perimeter
+        circularity = contour_meta.circularity
+
         if perimeter == 0:
             continue
-        circularity = 4 * math.pi * (area / (perimeter * perimeter))
+        
         logger.debug("Contour %s: area = %s, perimiter = %s, circularity = %s.",
-        idx+1,
-        area,
-        perimeter,
-        circularity)
+            idx+1,
+            area,
+            perimeter,
+            circularity)
 
         # contour checks: 1. area, 2. circularity
         # if there are still more than 4, check if they are
@@ -293,119 +344,108 @@ def detect_bubble(worksheet_meta: WorksheetTemplate, q_no: int):
         if MIN_MARK_AREA < area < MAX_MARK_AREA:
             # 2. circularity condition
             if circularity > float(MIN_CIRCULARITY):
-                bubble_candidates.append(cnt)
+                bubble_candidates.append(contour_meta)
 
-    bubble_candidates = sorted(bubble_candidates, key=lambda c: cv2.boundingRect(c)[0])
+    bubble_candidates = sorted(bubble_candidates, key=lambda c: cv2.boundingRect(c.contour)[0])
 
     filled_index = []
     ratios = []
-    debug_crop = q_crop.copy()
+    # debug_crop = q_crop.copy()
 
-    for i, cnt in enumerate(bubble_candidates):
-        mask = np.zeros(thresh.shape, dtype=np.uint8)
-        cv2.drawContours(mask, [cnt], -1, 255, -1)
+    if len(bubble_candidates) == 4:
+    # go through the bubble candidates to see which one is filled
+        for i, contour_meta in enumerate(bubble_candidates):
+            mask = np.zeros(thresh.shape, dtype=np.uint8)
+            cv2.drawContours(mask, [contour_meta.contour], -1, 255, -1)
 
-        # shrink the mask to account for the thickness of the bubble shape
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-        shrunken_mask = cv2.erode(mask, kernel, iterations=2)
+            # shrink the mask to account for the thickness of the bubble shape
+            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+            shrunken_mask = cv2.erode(mask, kernel, iterations=2)
 
-        total_pixels = cv2.countNonZero(shrunken_mask)
-        filled_pixels = cv2.countNonZero(cv2.bitwise_and(shrunken_mask, thresh))
-        fill_ratio = filled_pixels / total_pixels if total_pixels > 0 else 0
-        ratios.append(fill_ratio)
-        bubble_area = cv2.contourArea(cnt)
-        bubble_perimeter = cv2.arcLength(cnt, True)
-        bubble_circularity = 4 * math.pi * (bubble_area / (bubble_perimeter * bubble_perimeter))
-        logger.info(
-            "Bubble %s: fill_ratio = %s, area = %s, circularity = %s.",
-            chr(65+i), fill_ratio, bubble_area, bubble_circularity)
+            total_pixels = cv2.countNonZero(shrunken_mask)
+            filled_pixels = cv2.countNonZero(cv2.bitwise_and(shrunken_mask, thresh))
+            fill_ratio = filled_pixels / total_pixels if total_pixels > 0 else 0
+            ratios.append(fill_ratio)
+            bubble_area = contour_meta.area
+            bubble_circularity = contour_meta.circularity
+            logger.info(
+                "Bubble %s: fill_ratio = %s, area = %s, circularity = %s.",
+                chr(65+i), fill_ratio, bubble_area, bubble_circularity)
 
-        color = (0, 255, 0)
-        if fill_ratio > FILL_THRESHOLD:
-            color = (255, 0, 0)
-            filled_index.append(i)
+            if fill_ratio > FILL_THRESHOLD:
+                filled_index.append(i)
 
-        x, y, w, h = cv2.boundingRect(cnt)
+            # x, y, w, h = cv2.boundingRect(contour_meta.contour)
 
-        cv2.drawContours(debug_crop, [cnt], -1, color, 2)
-        cv2.putText(debug_crop, f"{chr(65+i)}", (x, y-5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
+            # cv2.drawContours(debug_crop, [contour_meta.contour], -1, color, 2)
+            # cv2.putText(debug_crop, f"{chr(65+i)}", (x, y-5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
 
-        # global debug image
-        cnt_global = cnt + np.array([[[x1, y1]]])
-        cv2.drawContours(debug_image, [cnt_global], -1, color, 2)
-        cv2.putText(debug_image,
-                    f"{chr(65+i)} {fill_ratio:.2f}",
-                    (x1 + x, y1 + y - 5),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1, cv2.LINE_AA)
+            # # global debug image
+            # cnt_global = contour_meta.contour + np.array([[[x1, y1]]])
+            # cv2.drawContours(debug_image, [cnt_global], -1, color, 2)
+            # cv2.putText(debug_image,
+            #             f"{chr(65+i)} {fill_ratio:.2f}",
+            #             (x1 + x, y1 + y - 5),
+            #             cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1, cv2.LINE_AA)
 
-    # cv2.imwrite('q_detected.jpg', debug_crop)
+        # cv2.imwrite('q_detected.jpg', debug_crop)
 
-    if len(bubble_candidates) != 4:
-        logger.debug("%s bubble candidates detected instead of 4.", len(bubble_candidates))
-
-        # draw blue box in debug image
-        cv2.rectangle(debug_image, (x1, y1), (x2, y2), (255, 0, 0), 2)
-
-        # draw blue box in checked image and write "+0" near top-right
-        # cv2.rectangle(checked_image, (x1, y1), (x2, y2), (255, 0, 0), 2)
-        # cv2.putText(checked_image, "+0", (x1 + rw - 5, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 5, cv2.LINE_AA)
-        pil_draw.rectangle([(x1, y1), (x2, y2)], fill=None, outline=(0, 0, 200))
-        pil_draw.text((x1 + rw - 5, y1 - 5), "?", fill=(0, 0, 200), font=font)
-
-        return ''
-    else:
         if not filled_index:
             logger.debug("No bubble detected as filled.")
 
-            # draw red box in debug image
-            cv2.rectangle(debug_image, (x1, y1), (x2, y2), (86, 86, 255), 2)
+            # # draw red box in debug image
+            # cv2.rectangle(debug_image, (x1, y1), (x2, y2), (86, 86, 255), 2)
 
-            # draw red box in checked image and write "+0" near top-right
-            # cv2.rectangle(checked_image, (x1, y1), (x2, y2), (86, 86, 255), 2)
-            # cv2.putText(checked_image, "+0", (x1 + rw - 5, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 5, cv2.LINE_AA)
-            pil_draw.rectangle([(x1, y1), (x2, y2)], fill=None, outline=(255, 86, 86))
-            pil_draw.text((x1 + rw - 5, y1 - 5), "?", fill=(255, 86, 86), font=font)
+            # # draw red box in checked image and write "+0" near top-right
+            # pil_draw.rectangle([(x1, y1), (x2, y2)], fill=None, outline=(255, 86, 86))
+            # pil_draw.text((x1 + rw - 5, y1 - 5), "?", fill=(255, 86, 86), font=font)
 
-            return ''
+            # return ''
+            ans = ''
         elif len(filled_index) > 1:
             logger.debug("Multiple bubbles detected.")
 
-            # draw red box in debug image
-            cv2.rectangle(debug_image, (x1, y1), (x2, y2), (86, 86, 255), 2)
+            # # draw red box in debug image
+            # cv2.rectangle(debug_image, (x1, y1), (x2, y2), (86, 86, 255), 2)
 
-            # draw red box in checked image and write "+0" near top-right
-            # cv2.rectangle(checked_image, (x1, y1), (x2, y2), (86, 86, 255), 2)
-            # cv2.putText(checked_image, "+0", (x1 + rw - 5, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 5, cv2.LINE_AA)
-            pil_draw.rectangle([(x1, y1), (x2, y2)], fill=None, outline=(255, 86, 86))
-            pil_draw.text((x1 + rw - 5, y1 - 5), "✘", fill=(255, 86, 86), font=font)
+            # # draw red box in checked image and write "+0" near top-right
+            # pil_draw.rectangle([(x1, y1), (x2, y2)], fill=None, outline=(255, 86, 86))
+            # pil_draw.text((x1 + rw - 5, y1 - 5), "✘", fill=(255, 86, 86), font=font)
 
-            return ''
+            # return ''
+            ans = ''
         else:
             ans = chr(65+filled_index[0])
-            logger.info("Detected bubble: %s, correct ans: %s.", ans, ans_key)
-            if ans.lower() == ans_key.lower():
-                logger.info("Correct ans.")
-                # correct ans
-                # draw green box in debug image
-                cv2.rectangle(debug_image, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            # logger.info("Detected bubble: %s, correct ans: %s.", ans, ans_key)
+            # if ans.lower() == ans_key.lower():
+            #     logger.info("Correct ans.")
+            #     # correct ans
+            #     # draw green box in debug image
+            #     cv2.rectangle(debug_image, (x1, y1), (x2, y2), (0, 255, 0), 2)
 
-                # draw green box in checked image and write "+1" near top-right
-                # cv2.rectangle(checked_image, (x1, y1), (x2, y2), (0, 127, 0), 2)
-                # cv2.putText(checked_image, "+1", (x1 + rw - 5, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 127, 0), 5, cv2.LINE_AA)
-                pil_draw.rectangle([(x1, y1), (x2, y2)], fill=None, outline=(0, 127, 0))
-                pil_draw.text((x1 + rw - 5, y1 - 5), "✔", fill=(0, 127, 0), font=font)
+            #     # draw green box in checked image and write "+1" near top-right
+            #     # cv2.rectangle(checked_image, (x1, y1), (x2, y2), (0, 127, 0), 2)
+            #     # cv2.putText(checked_image, "+1", (x1 + rw - 5, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 127, 0), 5, cv2.LINE_AA)
+            #     pil_draw.rectangle([(x1, y1), (x2, y2)], fill=None, outline=(0, 127, 0))
+            #     pil_draw.text((x1 + rw - 5, y1 - 5), "✔", fill=(0, 127, 0), font=font)
 
-            else:
-                # wrong ans
-                # draw red box in debug image
-                cv2.rectangle(debug_image, (x1, y1), (x2, y2), (0, 0, 255), 2)
+            # else:
+            #     # wrong ans
+            #     # draw red box in debug image
+            #     cv2.rectangle(debug_image, (x1, y1), (x2, y2), (0, 0, 255), 2)
 
-                # draw red box in checked image
-                # cv2.rectangle(checked_image, (x1, y1), (x2, y2), (0, 0, 255), 2)
-                # cv2.putText(checked_image, "+0", (x1 + rw - 5, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 5, cv2.LINE_AA)
-                pil_draw.rectangle([(x1, y1), (x2, y2)], fill=None, outline=(255, 86, 86))
-                pil_draw.text((x1 + rw - 5, y1 - 5), "✘", fill=(255, 86, 86), font=font)
-            return ans
+            #     # draw red box in checked image
+            #     # cv2.rectangle(checked_image, (x1, y1), (x2, y2), (0, 0, 255), 2)
+            #     # cv2.putText(checked_image, "+0", (x1 + rw - 5, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 5, cv2.LINE_AA)
+            #     pil_draw.rectangle([(x1, y1), (x2, y2)], fill=None, outline=(255, 86, 86))
+            #     pil_draw.text((x1 + rw - 5, y1 - 5), "✘", fill=(255, 86, 86), font=font)
+
+    else:
+        # len(bubble_candidates) is not 4, cannot reliably detect answer
+        logger.debug("%s bubble candidates detected instead of 4.", len(bubble_candidates))
+        ans = ''
+
+    return ans, all_contours, bubble_candidates
 
 
 def make_circle_mark(obtained, total, diameter=150):
