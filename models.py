@@ -180,6 +180,21 @@ class WorksheetTemplate:
     answer_key: Optional[List[str]] = None
     score: Optional[int] = None
 
+@dataclass
+class ROI:
+    """Data class to represent a Region of Interest (ROI) for a question."""
+    x1: int
+    y1: int
+    x2: int
+    y2: int
+    
+    def width(self) -> int:
+        """Calculate the width of the ROI."""
+        return self.x2 - self.x1
+    
+    def height(self) -> int:
+        """Calculate the height of the ROI."""
+        return self.y2 - self.y1
 
 @dataclass
 class ContourData:
