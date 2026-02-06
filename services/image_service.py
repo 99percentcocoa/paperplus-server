@@ -14,7 +14,7 @@ import cv2  # pylint: disable=no-member
 import numpy as np
 from tinydb import TinyDB
 from pupil_apriltags import Detector
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 from config import SETTINGS
 from models import DetectionResult, InputImageMeta, WorksheetTemplate, ROI
 
@@ -24,6 +24,10 @@ SAVE_DIR = SETTINGS.DOWNLOADS_PATH
 DEWARPED_DIR = SETTINGS.DEWARPED_PATH
 TARGET_WIDTH = SETTINGS.TARGET_WIDTH
 TARGET_HEIGHT = SETTINGS.TARGET_HEIGHT
+
+DEBUG_PATH = SETTINGS.DEBUG_PATH
+CHECKED_PATH = SETTINGS.CHECKED_PATH
+SERVER_IP = SETTINGS.SERVER_IP
 
 LEFT_QUESTION_ROI = SETTINGS.LEFT_QUESTION_ROI
 RIGHT_QUESTION_ROI = SETTINGS.RIGHT_QUESTION_ROI
@@ -610,14 +614,14 @@ def detect_orientation_and_decode(detection: DetectionResult):
                 return None
     return None  # some error
 
-def save_preprocessed(worksheet_meta: WorksheetTemplate) -> WorksheetTemplate:
+def save_preprocessed(worksheet_meta: WorksheetTemplate) -> None:
     """Save preprocessed image (already contained in WorksheetTemplate) to DEWARPED_PATH with modified filename.
 
     Args:
         worksheet_meta (WorksheetTemplate): Metadata of the worksheet.
     
     Returns:
-        WorksheetTemplate: Updated metadata with new preprocessed file path.
+        None
     """
     original_path = worksheet_meta.input_image.image_path
     preprocessed_filename = f"{Path(original_path).stem}_preprocessed.jpg"
@@ -625,4 +629,119 @@ def save_preprocessed(worksheet_meta: WorksheetTemplate) -> WorksheetTemplate:
     worksheet_meta.preprocessed_image.save(preprocessed_filepath)
     logger.debug("Saved preprocessed image to %s", preprocessed_filepath)
 
-    return worksheet_meta
+def save_debug(worksheet_meta: WorksheetTemplate) -> None:
+    """Save debug image (already contained in WorksheetTemplate) to DEWARPED_PATH with modified filename.
+
+    Args:
+        worksheet_meta (WorksheetTemplate): Metadata of the worksheet.
+    
+    Returns:
+        None
+    """
+    original_path = worksheet_meta.input_image.image_path
+    debug_filename = f"{Path(original_path).stem}_debug.jpg"
+    debug_filepath = Path(DEBUG_PATH) / debug_filename
+    debug_url = f"http://{SERVER_IP}:3000/debug/{debug_filename}"
+    worksheet_meta.debug_image.save(debug_filepath)
+    worksheet_meta.debug_image.image_url = debug_url
+    logger.debug("Saved debug image to %s", debug_filepath)
+
+def save_checked(worksheet_meta: WorksheetTemplate) -> None:
+    """Save checked image (already contained in WorksheetTemplate) to DEWARPED_PATH with modified filename.
+
+    Args:
+        worksheet_meta (WorksheetTemplate): Metadata of the worksheet.
+    
+    Returns:
+        None
+    """
+    
+    # check whether score is already calculated
+    if worksheet_meta.score is None or worksheet_meta.marked_answers is None or worksheet_meta.answer_key is None:
+        raise ValueError("Score is not calculated yet. Cannot save checked image with marks.")
+    
+    score = sum(worksheet_meta.score)
+    ans_key = worksheet_meta.answer_key
+    checked_img = worksheet_meta.checked_image
+
+    original_path = worksheet_meta.input_image.image_path
+    checked_filename = f"{Path(original_path).stem}_checked.jpg"
+    checked_filepath = Path(CHECKED_PATH) / checked_filename
+
+    # add marks circle to checked image
+    check_circle = make_circle_mark(score, len(ans_key))
+    checked_img.paste(check_circle, (100, 50), check_circle)
+    checked_img.save(checked_filepath)
+
+    checked_url = f"http://{SERVER_IP}:3000/checked/{checked_filename}"
+    worksheet_meta.checked_image_url = checked_url
+    # worksheet_meta.checked_image.save(checked_filepath)
+    # worksheet_meta.checked_image.image_url = checked_url
+    logger.debug("Saved checked image to %s", checked_filepath)
+
+
+def make_circle_mark(obtained, total, diameter=150):
+    """Make a circle mark showing obtained/total marks.
+
+    Args:
+        obtained (int): Marks obtained
+        total (int): Total marks
+        diameter (int): Diameter of the mark
+
+    Returns:
+        PIL.Image: Circle mark image
+    """
+    # Canvas (RGBA so it supports transparency)
+    img = Image.new("RGBA", (diameter, diameter), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+
+    DARK_BLUE = (10, 20, 120, 255)
+
+    # Circle border
+    draw.ellipse(
+        [(5, 5), (diameter-5, diameter-5)],
+        outline=DARK_BLUE,
+        width=7
+    )
+
+    # Horizontal line through center
+    center_y = diameter // 2
+    draw.line(
+        [(20, center_y), (diameter-20, center_y)],
+        fill=DARK_BLUE,
+        width=7
+    )
+
+    # Load font
+    try:
+        font = ImageFont.truetype("NotoSans-Bold.ttf", 50)
+    except (OSError, IOError):
+        font = ImageFont.load_default()
+
+    # --- TOP TEXT (obtained marks) ---
+    top_text = str(obtained)
+    bbox = draw.textbbox((0, 0), top_text, font=font)
+    tw = bbox[2] - bbox[0]
+    th = bbox[3] - bbox[1]
+
+    draw.text(
+        ((diameter - tw) // 2, center_y - th - 30),
+        top_text,
+        fill=DARK_BLUE,
+        font=font
+    )
+
+    # --- BOTTOM TEXT (total marks) ---
+    bottom_text = str(total)
+    bbox2 = draw.textbbox((0, 0), bottom_text, font=font)
+    tw2 = bbox2[2] - bbox2[0]
+    # th2 = bbox2[3] - bbox2[1]
+
+    draw.text(
+        ((diameter - tw2) // 2, center_y),
+        bottom_text,
+        fill=DARK_BLUE,
+        font=font
+    )
+
+    return img

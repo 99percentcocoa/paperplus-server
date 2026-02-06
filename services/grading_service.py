@@ -38,7 +38,7 @@ FILL_THRESHOLD = SETTINGS.FILL_THRESHOLD
 MIN_CIRCULARITY = SETTINGS.MIN_CIRCULARITY
 
 
-def check_worksheet(worksheet_meta: WorksheetTemplate):
+def check_worksheet(worksheet_meta: WorksheetTemplate) -> Tuple[List[str], List[int], bool]:
     """Process OMR answers using 25h9 tags. Also draw on debug, checked images.
 
     Args:
@@ -48,7 +48,7 @@ def check_worksheet(worksheet_meta: WorksheetTemplate):
         worksheet_id: ID to lookup answer key
 
     Returns:
-        tuple: (answers, ans_key, success) where success indicates if processing completed
+        tuple: (answers, score, success) where success indicates if processing completed
     """
     # Load answer key from database
     try:
@@ -56,13 +56,14 @@ def check_worksheet(worksheet_meta: WorksheetTemplate):
         ans_key = db.get(doc_id=worksheet_meta.worksheet_id).get('answerKey')
     except Exception as e:
         logger.error("Failed to load answer key for worksheet %s: %s", worksheet_meta.worksheet_id, e)
-        return [], None, False
+        return [], False
 
     worksheet_meta.answer_key = ans_key
     logger.info("Answer key for worksheet %s: %s", worksheet_meta.worksheet_id, ans_key)
 
     # Process answers for each tag
     answers = []
+    score:List[int] = []
 
     roi_coordinates = get_roi_coordinates(worksheet_meta)
     logging.debug("Extracted %s ROI images for OMR processing.", len(roi_coordinates))
@@ -130,6 +131,7 @@ def check_worksheet(worksheet_meta: WorksheetTemplate):
 
         # draw box around ROI based on correct or not
         if ans == q_ans:
+            score.append(1)
             logger.debug("Question %s correct.", q_no)
 
             # draw rectangle around ROI in debug image
@@ -139,6 +141,7 @@ def check_worksheet(worksheet_meta: WorksheetTemplate):
             pil_draw.rectangle([(x1, y1), (x2, y2)], fill=None, outline=(0, 127, 0))
             pil_draw.text((x1 + roi_coordinate.width - 5, y1 - 5), "✔", fill=(0, 127, 0), font=font)
         else:
+            score.append(0)
             logger.debug("Question %s incorrect.", q_no)
 
             # draw rectangle around ROI in debug image
@@ -148,81 +151,61 @@ def check_worksheet(worksheet_meta: WorksheetTemplate):
             pil_draw.rectangle([(x1, y1), (x2, y2)], fill=None, outline=(255, 86, 86))
             pil_draw.text((x1 + roi_coordinate.width - 5, y1 - 5), "✘", fill=(255, 86, 86), font=font)
 
-    
-    # for i, point in enumerate(tag_points):
-    #     logger.debug("Processing point %s.", i+1)
-
-    #     # Left question
-    #     q_left_ans_key = ans_key[i*2]
-    #     logger.debug("Processing question %s.", i*2+1)
-    #     q_left_ans = detect_bubble(
-    #         worksheet.preprocessed_image.image_array, point, LEFT_QUESTION_ROI,
-    #         debug_img, checked_img, q_left_ans_key
-    #     )
-
-    #     # Right question
-    #     q_right_ans_key = ans_key[i*2+1]
-    #     logger.debug("Processing question %s.", i*2+2)
-    #     q_right_ans = detect_bubble(
-    #         dewarped_img, point, RIGHT_QUESTION_ROI,
-    #         debug_img, checked_img, q_right_ans_key
-    #     )
-
-    #     answers.extend([q_left_ans, q_right_ans])
-    #     logger.debug("Q%s: %s.", i*2+1, q_left_ans)
-    #     logger.debug("Q%s: %s.", i*2+2, q_right_ans)
+    # save score
+    worksheet_meta.score = score
+    worksheet_meta.marked_answers = answers
 
     logger.info("Finished checking answers.")
-    return answers, ans_key, True
+    return answers, score, True
 
+# def handle_results(worksheet_meta: WorksheetTemplate) -> None:
+#     """Handle grading results: save images, send messages, and log to sheets.
 
-def handle_results(filepath, answers, ans_key, debug_img, checked_img, from_no, file_url, log_url):
-    """Handle grading results: save images, send messages, and log to sheets.
+#     Args:
+#         filepath: Original image path
+#         answers: Detected answers list
+#         ans_key: Correct answer key
+#         debug_img: Debug visualization image
+#         checked_img: PIL image with marked answers
+#         from_no: Sender number
+#         file_url: URL of original file
+#         log_url: URL of log file
+#     """
+#     logger.info("Answers: %s", worksheet_meta.marked_answers)
+#     score = worksheet_meta.score.count(1) if worksheet_meta.score else 0
 
-    Args:
-        filepath: Original image path
-        answers: Detected answers list
-        ans_key: Correct answer key
-        debug_img: Debug visualization image
-        checked_img: PIL image with marked answers
-        from_no: Sender number
-        file_url: URL of original file
-        log_url: URL of log file
-    """
-    logger.info("Answers: %s", answers)
-    score = check_results(answers, ans_key)
+#     # Save debug image
+#     debug_filename = f'debug_{Path(filepath).stem}.jpg'
+#     debug_filepath = os.path.join(DEBUG_PATH, debug_filename)
+#     cv2.imwrite(debug_filepath, debug_img) # pylint: disable=no-member
+#     logger.debug("Saved debug image at %s", debug_filepath)
 
-    # Save debug image
-    debug_filename = f'debug_{Path(filepath).stem}.jpg'
-    debug_filepath = os.path.join(DEBUG_PATH, debug_filename)
-    cv2.imwrite(debug_filepath, debug_img) # pylint: disable=no-member
-    logger.debug("Saved debug image at %s", debug_filepath)
+#     # Save checked image with score
+#     checked_filename = f'checked_{Path(filepath).stem}.jpg'
+#     checked_filepath = os.path.join(CHECKED_PATH, checked_filename)
+#     checked_url = f"http://{SERVER_IP}:3000/checked/{checked_filename}"
 
-    # Save checked image with score
-    checked_filename = f'checked_{Path(filepath).stem}.jpg'
-    checked_filepath = os.path.join(CHECKED_PATH, checked_filename)
-    checked_url = f"http://{SERVER_IP}:3000/checked/{checked_filename}"
+#     # Add marks circle to checked image
+#     check_circle = make_circle_mark(score, len(ans_key))
+#     checked_img.paste(check_circle, (100, 50), check_circle)
+#     checked_img.save(checked_filepath)
+#     logger.debug("Saved checked image at %s using PIL.", checked_filepath)
 
-    # Add marks circle to checked image
-    check_circle = make_circle_mark(score, len(ans_key))
-    checked_img.paste(check_circle, (100, 50), check_circle)
-    checked_img.save(checked_filepath)
-    logger.debug("Saved checked image at %s using PIL.", checked_filepath)
+#     debug_url = f"http://{SERVER_IP}:3000/debug/{debug_filename}"
 
-    debug_url = f"http://{SERVER_IP}:3000/debug/{debug_filename}"
+#     # Send results to user
+#     send_message(
+#         from_no,
+#         f"Your marks: {score}/{len(ans_key)} \n" 
+#         f"तुमचे मार्क: {score}/{len(ans_key)}")
+#     logger.info("Sending checked image.")
+#     send_image(from_no, checked_url)
 
-    # Send results to user
-    send_message(
-        from_no,
-        f"Your marks: {score}/{len(ans_key)} \n" 
-        f"तुमचे मार्क: {score}/{len(ans_key)}")
-    logger.info("Sending checked image.")
-    send_image(from_no, checked_url)
+#     # Log to Google Sheets
+#     logsheet_args = (from_no, file_url, debug_url, checked_url, json.dumps(answers), score, log_url)
+#     logger.debug("Logging %s", logsheet_args)
+#     threading.Thread(target=log_to_sheet, args=logsheet_args).start()
 
-    # Log to Google Sheets
-    logsheet_args = (from_no, file_url, debug_url, checked_url, json.dumps(answers), score, log_url)
-    logger.debug("Logging %s", logsheet_args)
-    threading.Thread(target=log_to_sheet, args=logsheet_args).start()
 
 
 # OMR Detection Functions
@@ -451,70 +434,3 @@ def detect_bubble(roi_image: InputImageMeta) -> tuple[str, list[ContourData], li
         ans = ''
 
     return ans, all_contours, bubble_candidates
-
-
-def make_circle_mark(obtained, total, diameter=150):
-    """Make a circle mark showing obtained/total marks.
-
-    Args:
-        obtained (int): Marks obtained
-        total (int): Total marks
-        diameter (int): Diameter of the mark
-
-    Returns:
-        PIL.Image: Circle mark image
-    """
-    # Canvas (RGBA so it supports transparency)
-    img = Image.new("RGBA", (diameter, diameter), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(img)
-
-    DARK_BLUE = (10, 20, 120, 255)
-
-    # Circle border
-    draw.ellipse(
-        [(5, 5), (diameter-5, diameter-5)],
-        outline=DARK_BLUE,
-        width=7
-    )
-
-    # Horizontal line through center
-    center_y = diameter // 2
-    draw.line(
-        [(20, center_y), (diameter-20, center_y)],
-        fill=DARK_BLUE,
-        width=7
-    )
-
-    # Load font
-    try:
-        font = ImageFont.truetype("NotoSans-Bold.ttf", 50)
-    except (OSError, IOError):
-        font = ImageFont.load_default()
-
-    # --- TOP TEXT (obtained marks) ---
-    top_text = str(obtained)
-    bbox = draw.textbbox((0, 0), top_text, font=font)
-    tw = bbox[2] - bbox[0]
-    th = bbox[3] - bbox[1]
-
-    draw.text(
-        ((diameter - tw) // 2, center_y - th - 30),
-        top_text,
-        fill=DARK_BLUE,
-        font=font
-    )
-
-    # --- BOTTOM TEXT (total marks) ---
-    bottom_text = str(total)
-    bbox2 = draw.textbbox((0, 0), bottom_text, font=font)
-    tw2 = bbox2[2] - bbox2[0]
-    # th2 = bbox2[3] - bbox2[1]
-
-    draw.text(
-        ((diameter - tw2) // 2, center_y),
-        bottom_text,
-        fill=DARK_BLUE,
-        font=font
-    )
-
-    return img

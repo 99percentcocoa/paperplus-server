@@ -5,16 +5,17 @@ This module contains functions for validating incoming WhatsApp messages
 and processing them through the grading pipeline.
 """
 
+import json
 import logging
 import threading
 import requests
 from pathlib import Path
 from services.image_service import (
-    scan_image, download_image, detect_orientation_and_decode, save_preprocessed
+    scan_image, download_image, detect_orientation_and_decode, save_preprocessed, save_debug, save_checked
 )
-from services.grading_service import process_omr_answers, handle_results
+from services.grading_service import check_worksheet, handle_results
 from services.logging_service import log_to_sheet
-from services.communication_service import send_message, is_valid_image_message
+from services.communication_service import send_image, send_message, is_valid_image_message
 from config import SETTINGS
 from models import DetectionResult, InputImageMeta, WorksheetTemplate
 
@@ -68,7 +69,7 @@ def handle_message(data, session_id):
 
                 try:
                     # image validation, tag sorting done in scan_image
-                    worksheet_meta = scan_image(worksheet.input_image)
+                    worksheet = scan_image(worksheet.input_image)
                 except ValueError as e:
                     # Corner tags detection failed
                     logger.debug("Less/more than 4 corner tags found.")
@@ -78,29 +79,30 @@ def handle_message(data, session_id):
                         "कृपया कार्यपत्रिका संपूर्ण दिसेल असा फोटो काढा. ⟳")
 
                 # Save preprocessed image to correct file path for later access
-                # worksheet.preprocessed_image = save_preprocessed(worksheet.preprocessed_image)
+                save_preprocessed(worksheet)
 
-                # TODO - function to save all images in the correct place
-
-                # Sort detections clockwise and decode worksheet
-                # corner_tags = sort_detections_clockwise(corner_tags)
-                # corner_tag_ids = [x.tag_id for x in corner_tags]
-                # logger.debug("Clockwise tag_ids: %s", [
-                #                 [x.tag_id, x.center] for x in corner_tags])
-
-                # worksheet_id = detect_orientation_and_decode(corner_detection)
-                # logger.debug("Worksheet ID: %s, tag_ids: %s",
-                #                 worksheet_id, corner_detection.sorted_detections)
+                # debug, checked will be saved at the end, so no need to save here
 
                 # Process OMR answers
-                answers, ans_key, omr_success = process_omr_answers(
-                    dewarped_img, debug_img, checked_img, worksheet_id)
+                answers, q_score, omr_success = check_worksheet(worksheet)
+                score = sum(q_score) if q_score else 0
 
                 if omr_success:
-                    # Handle successful results
-                    handle_results(
-                        filepath, answers, ans_key, debug_img, checked_img,
-                        from_no, file_url, log_url)
+                    # Successful checking!
+                    save_debug(worksheet)
+                    save_checked(worksheet)
+                    send_message(
+                        from_no,
+                        f"Your marks: {score}/{len(answers)} \n" 
+                        f"तुमचे मार्क: {score}/{len(answers)}")
+                    
+                    logger.info("Sending checked image.")
+                    send_image(from_no, worksheet.checked_image_url)
+
+                    logsheet_args = (from_no, file_url, worksheet.debug_image.image_url, worksheet.checked_image_url, json.dumps(answers), score, log_url)
+                    logger.debug("Logging to Google Sheets: %s", logsheet_args)
+                    threading.Thread(target=log_to_sheet, args=logsheet_args).start()
+
                 else:
                     # OMR failed - missing question tags
                     send_message(

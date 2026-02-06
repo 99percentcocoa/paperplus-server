@@ -174,11 +174,12 @@ class WorksheetTemplate:
     row_detections: Optional[DetectionResult] = None
     debug_image: Optional[InputImageMeta] = None
     checked_image: Optional[PILImage] = None
+    checked_image_url: Optional[str] = None
     num_questions: Optional[int] = None
     worksheet_id: Optional[int] = None
     marked_answers: Optional[List[str]] = None
     answer_key: Optional[List[str]] = None
-    score: Optional[int] = None
+    score: Optional[List[int]] = None
 
 @dataclass
 class ROI:
@@ -214,3 +215,7 @@ class ContourData:
             self.circularity = (4 * np.pi * self.area) / (self.perimeter ** 2)
         else:
             self.circularity = 0.0
+    
+    def get_global_contour(self, offset_x: int, offset_y: int) -> np.ndarray:
+        """Get the contour coordinates in the global image space by applying an offset."""
+        return self.contour + np.array([[[offset_x, offset_y]]])
