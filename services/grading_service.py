@@ -51,8 +51,13 @@ def check_worksheet(worksheet_meta: WorksheetTemplate):
         tuple: (answers, ans_key, success) where success indicates if processing completed
     """
     # Load answer key from database
-    db = TinyDB('worksheets.json')
-    ans_key = db.get(doc_id=worksheet_meta.worksheet_id).get('answerKey')
+    try:
+        db = TinyDB('worksheets.json')
+        ans_key = db.get(doc_id=worksheet_meta.worksheet_id).get('answerKey')
+    except Exception as e:
+        logger.error("Failed to load answer key for worksheet %s: %s", worksheet_meta.worksheet_id, e)
+        return [], None, False
+
     worksheet_meta.answer_key = ans_key
     logger.info("Answer key for worksheet %s: %s", worksheet_meta.worksheet_id, ans_key)
 
