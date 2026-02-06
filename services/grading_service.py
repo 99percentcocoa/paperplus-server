@@ -20,6 +20,7 @@ from services.communication_service import send_message, send_image
 from services.logging_service import log_to_sheet
 from config import SETTINGS
 from utils.grading_utils import check_results
+from models import InputImageMeta, DetectionResult, WorksheetTemplate, ContourData
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +37,7 @@ FILL_THRESHOLD = SETTINGS.FILL_THRESHOLD
 MIN_CIRCULARITY = SETTINGS.MIN_CIRCULARITY
 
 
-def process_omr_answers(dewarped_img, debug_img, checked_img, worksheet_id):
+def process_omr_answers(worksheet: WorksheetTemplate):
     """Process OMR answers using 25h9 tags.
 
     Args:
@@ -50,36 +51,37 @@ def process_omr_answers(dewarped_img, debug_img, checked_img, worksheet_id):
     """
     # Load answer key from database
     db = TinyDB('worksheets.json')
-    ans_key = db.get(doc_id=worksheet_id).get('answerKey')
-    logger.info("Answer key for worksheet %s: %s", worksheet_id, ans_key)
+    ans_key = db.get(doc_id=worksheet.worksheet_id).get('answerKey')
+    worksheet.answer_key = ans_key
+    logger.info("Answer key for worksheet %s: %s", worksheet.worksheet_id, ans_key)
 
     # Detect 25h9 tags for questions
-    detection_25h9 = detect_tags_25h9(dewarped_img)
-    detected_tags_25h9 = list(map(lambda x: x.tag_id, detection_25h9))
-    logger.debug("Detected question tags: %s", detected_tags_25h9)
+    # detection_25h9 = detect_tags_25h9(dewarped_img)
+    # detected_tags_25h9 = list(map(lambda x: x.tag_id, detection_25h9))
+    # logger.debug("Detected question tags: %s", detected_tags_25h9)
 
-    # Verify 25h9 tags detection
-    required = set(range(1, 11))
-    present = set(detected_tags_25h9)
+    # # Verify 25h9 tags detection
+    # required = set(range(1, 11))
+    # present = set(detected_tags_25h9)
 
-    if not required.issubset(present):
-        missing = required - present
-        logger.debug("Missing 25h9 tags: %s", missing)
-        return None, None, False  # Failed - missing tags
+    # if not required.issubset(present):
+    #     missing = required - present
+    #     logger.debug("Missing 25h9 tags: %s", missing)
+    #     return None, None, False  # Failed - missing tags
 
-    # Remove extra tags if any
-    extra = present - required
-    if extra:
-        logger.debug("Extra tags detected: %s", extra)
-        detection_25h9[:] = [d for d in detection_25h9 if d.tag_id not in list(extra)]
-        detected_tags_25h9 = list(map(lambda x: x.tag_id, detection_25h9))
-        logger.debug("Extra tags removed, new list: %s", detected_tags_25h9)
-    else:
-        logger.info("All 25h9 tags are correct.")
+    # # Remove extra tags if any
+    # extra = present - required
+    # if extra:
+    #     logger.debug("Extra tags detected: %s", extra)
+    #     detection_25h9[:] = [d for d in detection_25h9 if d.tag_id not in list(extra)]
+    #     detected_tags_25h9 = list(map(lambda x: x.tag_id, detection_25h9))
+    #     logger.debug("Extra tags removed, new list: %s", detected_tags_25h9)
+    # else:
+    #     logger.info("All 25h9 tags are correct.")
 
     # Process answers for each tag
     answers = []
-    tag_points = list(map(lambda t: tuple(map(int, t.center.tolist())), detection_25h9))
+    tag_points = list(map(lambda t: tuple(map(int, t.center.tolist())), worksheet.row_detections.detections))
 
     for i, point in enumerate(tag_points):
         logger.debug("Processing point %s.", i+1)
@@ -88,7 +90,7 @@ def process_omr_answers(dewarped_img, debug_img, checked_img, worksheet_id):
         q_left_ans_key = ans_key[i*2]
         logger.debug("Processing question %s.", i*2+1)
         q_left_ans = detect_bubble(
-            dewarped_img, point, LEFT_QUESTION_ROI,
+            worksheet.preprocessed_image.image_array, point, LEFT_QUESTION_ROI,
             debug_img, checked_img, q_left_ans_key
         )
 
@@ -189,22 +191,29 @@ def show_roi_zones(points, debug_image):
         cv2.rectangle(debug_image, (right_x1, right_y1), (right_x2, right_y2), (255, 0, 0), 2)
 
 
-def detect_bubble(image, anchor, roi, debug_image, checked_image, ans_key):
+def detect_bubble(worksheet_meta: WorksheetTemplate, q_no: int):
     """Detect filled bubble given anchor point and roi.
 
     Args:
-        image: Input image
-        anchor: Anchor point coordinates
-        roi: Region of interest parameters
-        debug_image: Debug image for visualization
-        checked_image: PIL image for marking results
-        ans_key: Correct answer key
+        worksheet_meta: Metadata of the worksheet including images and detections
+        q_no: Question number to detect bubble for
 
     Returns:
         str: Detected answer ('A', 'B', 'C', 'D') or '' if none/multiple detected
     """
+
+    # next((x for x in test_list if x.value == value), None)
+
+    # find the right detection as per question num
+    (anchor_x, anchor_y) = next((anchor for anchor in worksheet_meta.row_detections if anchor.tag_id == q_no), None)
+
+    # figure out from the question number whether to use left or right ROI
+    if q_no % 2 == 1:
+        roi = LEFT_QUESTION_ROI
+    else:
+        roi = RIGHT_QUESTION_ROI
+    
     (rx, ry, rw, rh) = roi
-    (anchor_x, anchor_y) = anchor
 
     x1 = anchor_x + rx
     y1 = anchor_y + ry
@@ -215,7 +224,7 @@ def detect_bubble(image, anchor, roi, debug_image, checked_image, ans_key):
 
     # PIL setup for adding tick and cross marks
     font = ImageFont.truetype("NotoSansSymbols2-Regular.ttf", 60)
-    pil_draw = ImageDraw.Draw(checked_image)
+    pil_draw = ImageDraw.Draw(worksheet_meta.checked_image)
 
     # draw green rectangle around ROI in debug image
     # cv2.rectangle(debug_image, (x1, y1), (x2, y2), (0, 255, 0), 2)

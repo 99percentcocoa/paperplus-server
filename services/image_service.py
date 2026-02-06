@@ -25,6 +25,9 @@ DEWARPED_DIR = SETTINGS.DEWARPED_PATH
 TARGET_WIDTH = SETTINGS.TARGET_WIDTH
 TARGET_HEIGHT = SETTINGS.TARGET_HEIGHT
 
+LEFT_QUESTION_ROI = SETTINGS.LEFT_QUESTION_ROI
+RIGHT_QUESTION_ROI = SETTINGS.RIGHT_QUESTION_ROI
+
 # AprilTag detectors
 at_detector_36h11 = Detector(
     families="tag36h11",
@@ -145,9 +148,9 @@ def scan_image(input_image: InputImageMeta) -> WorksheetTemplate:
         corner_detections: (DetectionResult) Result of AprilTag detections.
     """
 
-    corner_detections = detect_apriltags(input_image, "36h11")
+    corner_detections = detect_apriltags(input_image, "36h11").sorted_detections
     cropped_image, worksheet_id = crop_image(input_image, corner_detections)
-    row_detections = detect_apriltags(cropped_image, "25h9")
+    row_detections = detect_apriltags(cropped_image, "25h9").sorted_detections
     preprocessed_image = clean_document(cropped_image)
 
     debug_image = cropped_image
@@ -295,6 +298,38 @@ def crop_image(input_image: InputImageMeta, detections: DetectionResult) -> tupl
 
     return InputImageMeta(image_array=warped_image), worksheet_id
 
+# get cropped ROI images from worksheet
+def get_roi_images(worksheet_meta: WorksheetTemplate) -> list[InputImageMeta]:
+    """Get cropped ROI images for each question.
+
+    Args:
+        worksheet_meta: Metadata of the worksheet including images and detections
+    
+    Returns:
+        List of InputImageMeta objects for each question's ROI
+    """
+    roi_images = []
+    row_detections = worksheet_meta.row_detections.sorted_detections
+
+    for i, detection in enumerate(row_detections):
+        logger.debug("In detection %d", i)
+        anchor_x, anchor_y = detection.center
+
+        for _, roi in enumerate([LEFT_QUESTION_ROI, RIGHT_QUESTION_ROI]):
+
+            (rx, ry, rw, rh) = roi
+            x1 = anchor_x + rx
+            y1 = anchor_y + ry
+            x2 = x1 + rw
+            y2 = y1 + rh
+
+            logger.info("ROI coordinates: %s, %s to %s, %s.", x1, y1, x2, y2)
+
+            # Crop the ROI from the preprocessed image
+            cropped_roi = worksheet_meta.preprocessed_image.image_array[y1:y2, x1:x2]
+            roi_images.append(InputImageMeta(image_array=cropped_roi))
+
+    return roi_images
 
 # def clean_document(img):
 #     """Clean and preprocess document image for OMR.

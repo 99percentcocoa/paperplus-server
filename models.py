@@ -111,7 +111,7 @@ class DetectionResult:
                 raise ValueError(f"Tag family '25h9' requires at least {required_detections} detections, but got {num_detections}")
             
             # Filter out detections with tag_id outside valid range [0, required_detections-1]
-            valid_detections = [d for d in self.detections if 0 <= d.tag_id < required_detections]
+            valid_detections = [d for d in self.detections if 0 <= d.tag_id <= required_detections]
             self.detections = valid_detections
             
             # Sort 25h9 detections from top to bottom by Y-coordinate
