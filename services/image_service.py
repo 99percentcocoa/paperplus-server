@@ -302,21 +302,19 @@ def crop_image(input_image: InputImageMeta, detections: DetectionResult) -> tupl
     return InputImageMeta(image_array=warped_image), worksheet_id
 
 # get cropped ROI images from worksheet
-def get_roi_coordinates(worksheet_meta: WorksheetTemplate) -> list[ROI]:
+def get_roi_coordinates(row_detections: DetectionResult) -> list[ROI]:
     """Get ROI coordinates for each question. Also draw on the ROIs in the debug file.
 
     Args:
-        worksheet_meta: Metadata of the worksheet including images and detections
+        row_detections: Sorted detections of AprilTags representing rows
     
     Returns:
         List of ROI objects for each question's ROI
     """
     roi_coordinates = []
 
-    row_detections = worksheet_meta.row_detections.sorted_detections
+    # row_detections = worksheet_meta.row_detections.sorted_detections
     logger.debug("Row detections for ROI cropping: %s", [d.tag_id for d in row_detections])
-
-    debug_image = worksheet_meta.debug_image.image_array
 
     for i, detection in enumerate(row_detections):
         logger.debug("In detection %d", i)

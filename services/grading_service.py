@@ -59,7 +59,7 @@ def check_worksheet(worksheet_meta: WorksheetTemplate) -> Tuple[List[str], List[
     answers = []
     score:List[int] = []
 
-    roi_coordinates = get_roi_coordinates(worksheet_meta)
+    roi_coordinates = get_roi_coordinates(worksheet_meta.row_detections_sorted)
     logging.debug("Extracted %s ROI images for OMR processing.", len(roi_coordinates))
 
     # debug image, PIL setup
