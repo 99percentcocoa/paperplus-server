@@ -314,9 +314,9 @@ def get_roi_coordinates(row_detections: DetectionResult) -> list[ROI]:
     roi_coordinates = []
 
     # row_detections = worksheet_meta.row_detections.sorted_detections
-    logger.debug("Row detections for ROI cropping: %s", [d.tag_id for d in row_detections])
+    logger.debug("Row detections for ROI cropping: %s", [d.tag_id for d in row_detections.detections])
 
-    for i, detection in enumerate(row_detections):
+    for i, detection in enumerate(row_detections.detections):
         logger.debug("In detection %d", i)
         anchor_x, anchor_y = detection.center
 
