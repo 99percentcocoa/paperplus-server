@@ -33,8 +33,8 @@ class Config:
     NUM_ROW_TAGS = 10
 
     # roi format: (x_offset, y_offset, width, height)
-    LEFT_QUESTION_ROI = (85, -40, 475, 85)
-    RIGHT_QUESTION_ROI = (620, -40, 475, 85)
+    LEFT_QUESTION_ROI = (85, -40, 485, 90)
+    RIGHT_QUESTION_ROI = (620, -40, 485, 90)
 
     MIN_MARK_AREA = 600
     MAX_MARK_AREA = 950
