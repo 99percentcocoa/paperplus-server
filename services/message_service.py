@@ -5,11 +5,8 @@ This module contains functions for validating incoming WhatsApp messages
 and processing them through the grading pipeline.
 """
 
-import json
 import logging
-import threading
 import requests
-from pathlib import Path
 from services.image_service import (
     scan_image, download_image, detect_orientation_and_decode, save_preprocessed, save_debug, save_checked
 )

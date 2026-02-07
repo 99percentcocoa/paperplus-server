@@ -5,22 +5,15 @@ This module contains functions for processing Optical Mark Recognition (OMR)
 answers from worksheet images, detecting bubbles, and grading them against answer keys.
 """
 
-import os
 import logging
-import json
-import threading
-import math
-from pathlib import Path
 from typing import Tuple, List
 import cv2  # pylint: disable=no-member
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont
-from tinydb import TinyDB
+from PIL import ImageDraw
 from services.image_service import detect_tags_25h9, get_roi_coordinates
 from services.communication_service import send_message, send_image
 from services.logging_service import log_to_sheet
 from config import SETTINGS
-from utils.grading_utils import check_results
 from models import InputImageMeta, DetectionResult, WorksheetTemplate, ContourData, ROI
 
 logger = logging.getLogger(__name__)
