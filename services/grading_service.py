@@ -11,9 +11,10 @@ import cv2  # pylint: disable=no-member
 import numpy as np
 from PIL import ImageDraw, ImageFont
 from tinydb import TinyDB
-from services.image_service import detect_tags_25h9, get_roi_coordinates
+from services.image_service import detect_tags_25h9, get_roi_coordinates, get_cropped_bubbles_roi
 from services.communication_service import send_message, send_image
 from services.logging_service import log_to_sheet
+from services.inference import predict_bubble
 from config import SETTINGS
 from models import InputImageMeta, DetectionResult, WorksheetTemplate, ContourData, ROI
 
@@ -32,14 +33,39 @@ FILL_THRESHOLD = SETTINGS.FILL_THRESHOLD
 MIN_CIRCULARITY = SETTINGS.MIN_CIRCULARITY
 
 
-def check_worksheet(worksheet_meta: WorksheetTemplate) -> Tuple[List[str], List[int], bool]:
+def detect_bubble_inference(roi_image: InputImageMeta) -> str:
+    """
+    Detect which bubble (A, B, C, D) is filled in a question region using inference.
+
+    Args:
+        roi_image (InputImageMeta): Metadata of the question region (ROI) image.
+    
+    Returns:
+        str: The detected answer (e.g., 'A', 'B', 'C', 'D', or ''). (note: multiple filled bubbles will return '')
+    """
+
+    bubbles_marked = get_cropped_bubbles_roi(roi_image)
+    option_labels = ['A', 'B', 'C', 'D']
+
+    marked_options = []
+
+    for b_idx, bubble in enumerate(bubbles_marked):
+
+        bubble_prediction = predict_bubble(bubble)
+        if bubble_prediction[1] == "Marked":
+            marked_options.append(option_labels[b_idx])
+
+    if len(marked_options) == 1:
+        return marked_options[0]
+    else:
+        return ""
+
+def check_worksheet(worksheet_meta: WorksheetTemplate, use_classifier: bool) -> Tuple[List[str], List[int], bool]:
     """Process OMR answers using 25h9 tags. Also draw on debug, checked images.
 
     Args:
-        dewarped_img: Processed image for OMR
-        debug_img: Image for debug visualization
-        checked_img: PIL image for marking answers
-        worksheet_id: ID to lookup answer key
+        worksheet_meta (WorksheetTemplate): Metadata of the worksheet including images and detections
+        use_classifier (bool): Whether to use inference-based bubble detection or contour-based detection
 
     Returns:
         tuple: (answers, score, success) where success indicates if processing completed
@@ -50,7 +76,7 @@ def check_worksheet(worksheet_meta: WorksheetTemplate) -> Tuple[List[str], List[
         ans_key = db.get(doc_id=worksheet_meta.worksheet_id).get('answerKey')
     except Exception as e:
         logger.error("Failed to load answer key for worksheet %s: %s", worksheet_meta.worksheet_id, e)
-        return [], False
+        return [], [], False
 
     worksheet_meta.answer_key = ans_key
     logger.info("Answer key for worksheet %s: %s", worksheet_meta.worksheet_id, ans_key)
@@ -80,48 +106,56 @@ def check_worksheet(worksheet_meta: WorksheetTemplate) -> Tuple[List[str], List[
             x1:x2
         ]
 
-        ans, all_contours, bubble_candidates = detect_bubble(InputImageMeta(image_array=roi_image_array))
+        roi_image = InputImageMeta(image_array=roi_image_array)
 
-        answers.append(ans)
-        logger.debug("Detected answer for question %s: %s (Correct answer: %s)", q_no, ans, q_ans)
+        if use_classifier:
+            ans = detect_bubble_inference(roi_image)
+            answers.append(ans)
+            logger.info("Detected answer for question %s: %s (Correct answer: %s)", q_no, ans, q_ans)
 
-        # draw all contours on debug image for visualization
-        for idx, contour_meta in enumerate(all_contours):
-            cnt = contour_meta.contour
-            cnt_global = contour_meta.get_global_contour(roi_coordinate.x1, roi_coordinate.y1)
-            cv2.drawContours(debug_image_array, [cnt_global], -1, (0, 0, 255), 1)
+        else:
+            ans, all_contours, bubble_candidates = detect_bubble(roi_image)
 
-            # label the contour for debugging
-            M = cv2.moments(cnt)
-            if M["m00"] != 0:
-                cX = int(M["m10"] / M["m00"]) + x1
-                cY = int(M["m01"] / M["m00"]) + y1
-            else:
-                x, y, w, h = cv2.boundingRect(cnt)
-                cX = (x + w // 2) + x1
-                cY = (y + h // 2) + y1
+            answers.append(ans)
+            logger.debug("Detected answer for question %s: %s (Correct answer: %s)", q_no, ans, q_ans)
 
-            cv2.putText(
-                debug_image_array,
-                f"{idx+1}",
-                (cX, cY),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.5,
-                (0, 0, 255),
-                2) # Red text
-        
-        # draw and label bubble candidates as A, B, C, and D
-        for idx, contour_meta in enumerate(bubble_candidates):
-            x, y, w, h = cv2.boundingRect(contour_meta.contour)
+            # draw all contours on debug image for visualization
+            for idx, contour_meta in enumerate(all_contours):
+                cnt = contour_meta.contour
+                cnt_global = contour_meta.get_global_contour(roi_coordinate.x1, roi_coordinate.y1)
+                cv2.drawContours(debug_image_array, [cnt_global], -1, (0, 0, 255), 1)
 
-            color = (0, 255, 0) if chr(65+idx) == q_ans else (255, 86, 86)
-            cnt_global = contour_meta.contour + np.array([[[x1, y1]]])
+                # label the contour for debugging
+                M = cv2.moments(cnt)
+                if M["m00"] != 0:
+                    cX = int(M["m10"] / M["m00"]) + x1
+                    cY = int(M["m01"] / M["m00"]) + y1
+                else:
+                    x, y, w, h = cv2.boundingRect(cnt)
+                    cX = (x + w // 2) + x1
+                    cY = (y + h // 2) + y1
 
-            cv2.drawContours(debug_image_array, [cnt_global], -1, color, 2)
-            cv2.putText(debug_image_array,
-                        f"{chr(65+idx)}",
-                        (x1 + x, y1 + y - 5),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1, cv2.LINE_AA)
+                cv2.putText(
+                    debug_image_array,
+                    f"{idx+1}",
+                    (cX, cY),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.5,
+                    (0, 0, 255),
+                    2) # Red text
+            
+            # draw and label bubble candidates as A, B, C, and D
+            for idx, contour_meta in enumerate(bubble_candidates):
+                x, y, w, h = cv2.boundingRect(contour_meta.contour)
+
+                color = (0, 255, 0) if chr(65+idx) == q_ans else (255, 86, 86)
+                cnt_global = contour_meta.contour + np.array([[[x1, y1]]])
+
+                cv2.drawContours(debug_image_array, [cnt_global], -1, color, 2)
+                cv2.putText(debug_image_array,
+                            f"{chr(65+idx)}",
+                            (x1 + x, y1 + y - 5),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1, cv2.LINE_AA)
 
         # draw box around ROI based on correct or not
         if ans == q_ans:

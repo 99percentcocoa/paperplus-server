@@ -114,7 +114,8 @@ def process_worksheet(
             
             # Step 4: Process OMR answers
             logger.info("Step 3: Processing OMR answers...")
-            answers, q_score, omr_success = check_worksheet(worksheet)
+            answers, q_score, omr_success = check_worksheet(worksheet, use_classifier=True)
+            logging.info("✓ OMR processing completed. Detected answers: %s", answers)
             
             if not omr_success:
                 logger.warning("✗ OMR processing failed: Missing or invalid question tags")

@@ -10,6 +10,7 @@ import os
 import logging
 from pathlib import Path
 import requests
+from typing import List
 import cv2  # pylint: disable=no-member
 import numpy as np
 from tinydb import TinyDB
@@ -221,47 +222,6 @@ def detect_tags_25h9(image_input):
     detection = at_detector_25h9.detect(gray_img)
     return detection
 
-
-# Image Processing Functions
-# def dewarp_omr(filepath, detection):
-#     """Dewarp OMR image using AprilTag detections.
-
-#     Args:
-#         filepath (str): Path to the image file
-#         detection (list): List of AprilTag detections in clockwise order
-
-#     Returns:
-#         np.ndarray: Dewarped image
-#     """
-#     image = cv2.imread(filepath)
-
-#     # detections are already sorted in tl, tr, br, bl
-#     corner_tags = [d.center for d in detection]
-#     logger.debug("Pre arranging: %s", corner_tags)
-
-#     tl = corner_tags[0]
-#     tr = corner_tags[1]
-#     br = corner_tags[2]
-#     bl = corner_tags[3]
-#     logger.debug("Final tags in order: %s, %s, %s, %s.", tl, tr, br, bl)
-
-#     # Re-order the final source points: TL, TR, BR, BL
-#     # This is the essential input for cv2.getPerspectiveTransform
-#     src_pts_aligned = np.array([tl, tr, br, bl], dtype="float32")
-
-#     dst_pts = np.array([
-#         [0, 0],
-#         [TARGET_WIDTH - 1, 0],
-#         [TARGET_WIDTH - 1, TARGET_HEIGHT - 1],
-#         [0, TARGET_HEIGHT - 1]], dtype="float32")
-
-#     # Calculate the global perspective transform matrix (M)
-#     t_matrix = cv2.getPerspectiveTransform(src_pts_aligned, dst_pts)
-
-#     # Apply the dewarping
-#     dewarped = cv2.warpPerspective(image, t_matrix, (TARGET_WIDTH, TARGET_HEIGHT))
-#     return dewarped
-
 # crop image using corner tags
 def crop_image(input_image: InputImageMeta, detections: DetectionResult) -> tuple[InputImageMeta, int]:
     """Crop the input image using the detected AprilTags.
@@ -336,6 +296,29 @@ def get_roi_coordinates(row_detections: DetectionResult) -> list[ROI]:
             roi_coordinates.append(ROI(x1, y1, x2, y2))
 
     return roi_coordinates
+
+def get_cropped_bubbles_roi(input_image: InputImageMeta) -> List[InputImageMeta]:
+    """
+    Get individual bubble images from an ROI image.
+
+    Args:
+        input_image (InputImageMeta): Metadata of the ROI input image.
+    
+    Returns:
+        List[InputImageMeta]: List of bubble images extracted from the ROI.
+    """
+
+    roi_array = input_image.image_array
+    roi_width = roi_array.shape[1]
+    part_width = roi_width // 4
+    roi_bubbles: List[InputImageMeta] = []
+    for i in range(4):
+        start_x = i * part_width
+        end_x = start_x + part_width if i < 3 else roi_width
+        roi_part = InputImageMeta(image_array=roi_array[:, start_x:end_x].copy())
+        roi_bubbles.append(roi_part)
+
+    return roi_bubbles
 
 # def clean_document(img):
 #     """Clean and preprocess document image for OMR.

@@ -1,7 +1,7 @@
 
 from pathlib import Path
 
-from ker_ocr.models import InputImageMeta
+from models import InputImageMeta
 
 import numpy as np
 import cv2
