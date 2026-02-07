@@ -13,7 +13,7 @@ from pathlib import Path
 from services.image_service import (
     scan_image, download_image, detect_orientation_and_decode, save_preprocessed, save_debug, save_checked
 )
-from services.grading_service import check_worksheet, handle_results
+from services.grading_service import check_worksheet
 from services.logging_service import log_to_sheet
 from services.communication_service import send_image, send_message, is_valid_image_message
 from config import SETTINGS
