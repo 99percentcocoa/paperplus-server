@@ -6,6 +6,8 @@ and processing them through the grading pipeline.
 """
 
 import logging
+import threading
+import json
 import requests
 from services.image_service import (
     scan_image, download_image, detect_orientation_and_decode, save_preprocessed, save_debug, save_checked
