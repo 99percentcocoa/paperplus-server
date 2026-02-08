@@ -71,7 +71,7 @@ def predict_bubble(input_bubble: InputImageMeta):
         input_bubble (InputImageMeta): The input image metadata for the bubble image.
     
     Returns:
-        Tuple[float, str, float]: A tuple containing the probability, result label ("Marked" or "Unmarked"), and confidence percentage.
+        Tuple[float, str, float, float]: A tuple containing the probability, result label ("Marked" or "Unmarked"), and confidence percentage.
     """
 
     if interpreter is None or input_details is None or output_details is None:
@@ -96,4 +96,4 @@ def predict_bubble(input_bubble: InputImageMeta):
         result = "Unmarked"
         confidence = probability * 100
 
-    return probability.item(), result, confidence
+    return probability.item(), result, confidence, probability

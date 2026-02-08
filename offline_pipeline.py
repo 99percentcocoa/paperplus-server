@@ -34,31 +34,34 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def create_output_directories(output_folder: Path) -> Tuple[Path, Path, Path]:
-    """Create output subdirectories for dewarped, debug, and checked images.
+def create_output_directories(output_folder: Path) -> Tuple[Path, Path, Path, Path, Path]:
+    """Create output subdirectories for dewarped, debug, checked, cropped, and bubble images.
     
     Args:
         output_folder (Path): Root output folder
         
     Returns:
-        Tuple of (dewarped_dir, debug_dir, checked_dir)
+        Tuple of (dewarped_dir, debug_dir, checked_dir, cropped_dir, bubbles_dir)
     """
     dewarped_dir = output_folder / "dewarped"
     debug_dir = output_folder / "debug"
     checked_dir = output_folder / "checked"
+    cropped_dir = output_folder / "cropped"
+    bubbles_dir = output_folder / "bubbles"
     
-    for directory in [dewarped_dir, debug_dir, checked_dir]:
+    for directory in [dewarped_dir, debug_dir, checked_dir, cropped_dir, bubbles_dir]:
         directory.mkdir(parents=True, exist_ok=True)
         logger.info("Created directory: %s", directory)
     
-    return dewarped_dir, debug_dir, checked_dir
-
+    return dewarped_dir, debug_dir, checked_dir, cropped_dir, bubbles_dir
 
 def process_worksheet(
     input_path: Path,
     dewarped_dir: Path,
     debug_dir: Path,
-    checked_dir: Path
+    checked_dir: Path,
+    cropped_dir: Path,
+    bubbles_dir: Path
 ) -> Optional[dict]:
     """Process a single worksheet image through the OMR pipeline.
     
@@ -67,6 +70,8 @@ def process_worksheet(
         dewarped_dir (Path): Directory to save dewarped (preprocessed) images
         debug_dir (Path): Directory to save debug images with detections
         checked_dir (Path): Directory to save checked (graded) images
+        cropped_dir (Path): Directory to save cropped images
+        bubbles_dir (Path): Directory to save individual bubble and ROI images
         
     Returns:
         dict: Results containing answers, scores, and paths to saved images
@@ -104,8 +109,21 @@ def process_worksheet(
         SETTINGS.DEWARPED_PATH = str(dewarped_dir)
         SETTINGS.DEBUG_PATH = str(debug_dir)
         SETTINGS.CHECKED_PATH = str(checked_dir)
+        CROPPED_PATH = str(cropped_dir)
+        
+        # Override BUBBLES_FOLDER for this processing run
+        from services import grading_service
+        original_bubbles_folder = grading_service.BUBBLES_FOLDER
+        grading_service.BUBBLES_FOLDER = bubbles_dir
         
         try:
+            # save cropped image
+            cropped_filename = f"{input_path.stem}_cropped.jpg"
+            cropped_path = cropped_dir / cropped_filename
+            cropped_image = worksheet.cropped_image
+            cropped_image.save(cropped_path)
+            logger.info("✓ Cropped image saved: %s", cropped_filename)
+
             # Step 3: Save preprocessed (dewarped) image
             logger.info("Step 2: Saving preprocessed image...")
             save_preprocessed(worksheet)
@@ -114,7 +132,7 @@ def process_worksheet(
             
             # Step 4: Process OMR answers
             logger.info("Step 3: Processing OMR answers...")
-            answers, q_score, omr_success = check_worksheet(worksheet, use_classifier=True)
+            answers, q_score, omr_success = check_worksheet(worksheet, use_classifier=True, debug=True)
             logging.info("✓ OMR processing completed. Detected answers: %s", answers)
             
             if not omr_success:
@@ -149,7 +167,8 @@ def process_worksheet(
                 "output_files": {
                     "dewarped": str(dewarped_dir / dewarped_filename),
                     "debug": str(debug_dir / debug_filename),
-                    "checked": str(checked_dir / checked_filename)
+                    "checked": str(checked_dir / checked_filename),
+                    "cropped": str(cropped_dir / cropped_filename)
                 }
             }
             
@@ -171,6 +190,7 @@ def process_worksheet(
             SETTINGS.DEWARPED_PATH = original_dewarped
             SETTINGS.DEBUG_PATH = original_debug
             SETTINGS.CHECKED_PATH = original_checked
+            grading_service.BUBBLES_FOLDER = original_bubbles_folder
     
     except Exception as e:
         logger.exception("Unexpected error during processing: %s", e)
@@ -227,7 +247,7 @@ Examples:
     
     # Create output directories
     try:
-        dewarped_dir, debug_dir, checked_dir = create_output_directories(output_path)
+        dewarped_dir, debug_dir, checked_dir, cropped_dir, bubbles_dir = create_output_directories(output_path)
     except Exception as e:
         logger.error("Failed to create output directories: %s", e)
         return 1
@@ -238,7 +258,7 @@ Examples:
     if input_path.is_file():
         # Single image file
         logger.info("Processing single image file: %s", input_path)
-        result = process_worksheet(input_path, dewarped_dir, debug_dir, checked_dir)
+        result = process_worksheet(input_path, dewarped_dir, debug_dir, checked_dir, cropped_dir, bubbles_dir)
         
         if result:
             results_list.append(result)
@@ -263,7 +283,7 @@ Examples:
         
         for idx, image_file in enumerate(image_files, 1):
             logger.info("\n[%d/%d] Processing: %s", idx, len(image_files), image_file.name)
-            result = process_worksheet(image_file, dewarped_dir, debug_dir, checked_dir)
+            result = process_worksheet(image_file, dewarped_dir, debug_dir, checked_dir, cropped_dir, bubbles_dir)
             
             if result:
                 results_list.append(result)

@@ -83,7 +83,7 @@ def handle_message(data, session_id):
                 # debug, checked will be saved at the end, so no need to save here
 
                 # Process OMR answers
-                answers, q_score, omr_success = check_worksheet(worksheet)
+                answers, q_score, omr_success = check_worksheet(worksheet_meta=worksheet, use_classifier=False, debug=False)
                 score = sum(q_score) if q_score else 0
 
                 if omr_success:

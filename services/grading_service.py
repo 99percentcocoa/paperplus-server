@@ -7,6 +7,7 @@ answers from worksheet images, detecting bubbles, and grading them against answe
 
 import logging
 from typing import Tuple, List
+from pathlib import Path
 import cv2  # pylint: disable=no-member
 import numpy as np
 from PIL import ImageDraw, ImageFont
@@ -24,6 +25,8 @@ DEBUG_PATH = SETTINGS.DEBUG_PATH
 CHECKED_PATH = SETTINGS.CHECKED_PATH
 SERVER_IP = SETTINGS.SERVER_IP
 
+BUBBLES_FOLDER = Path(__file__).parent.parent / "bubbles"
+
 # OMR Configuration
 LEFT_QUESTION_ROI = SETTINGS.LEFT_QUESTION_ROI
 RIGHT_QUESTION_ROI = SETTINGS.RIGHT_QUESTION_ROI
@@ -33,12 +36,14 @@ FILL_THRESHOLD = SETTINGS.FILL_THRESHOLD
 MIN_CIRCULARITY = SETTINGS.MIN_CIRCULARITY
 
 
-def detect_bubble_inference(roi_image: InputImageMeta) -> str:
+def detect_bubble_inference(roi_image: InputImageMeta, debug=False, question_number=0) -> str:
     """
     Detect which bubble (A, B, C, D) is filled in a question region using inference.
 
     Args:
         roi_image (InputImageMeta): Metadata of the question region (ROI) image.
+        debug (bool): Whether to save individual bubble images.
+        question_number (int): Question number for naming saved images.
     
     Returns:
         str: The detected answer (e.g., 'A', 'B', 'C', 'D', or ''). (note: multiple filled bubbles will return '')
@@ -54,13 +59,20 @@ def detect_bubble_inference(roi_image: InputImageMeta) -> str:
         bubble_prediction = predict_bubble(bubble)
         if bubble_prediction[1] == "Marked":
             marked_options.append(option_labels[b_idx])
+        
+        if debug:
+            BUBBLES_FOLDER.mkdir(parents=True, exist_ok=True)
+            bubble_image_path = BUBBLES_FOLDER / f"q{question_number:02d}_bubble_{option_labels[b_idx]}.png"
+            bubble.save(bubble_image_path)
+        
+        logging.info("Bubble %s: %s with confidence %.2f%%. Probability: %.4f", option_labels[b_idx], bubble_prediction[1], bubble_prediction[2], bubble_prediction[3])
 
     if len(marked_options) == 1:
         return marked_options[0]
     else:
         return ""
 
-def check_worksheet(worksheet_meta: WorksheetTemplate, use_classifier: bool) -> Tuple[List[str], List[int], bool]:
+def check_worksheet(worksheet_meta: WorksheetTemplate, use_classifier: bool, debug=False) -> Tuple[List[str], List[int], bool]:
     """Process OMR answers using 25h9 tags. Also draw on debug, checked images.
 
     Args:
@@ -101,20 +113,31 @@ def check_worksheet(worksheet_meta: WorksheetTemplate, use_classifier: bool) -> 
         q_ans = ans_key[i]
         logger.debug("Processing ROI %s", q_no)
 
-        roi_image_array = worksheet_meta.preprocessed_image.image_array[
-            y1:y2, 
-            x1:x2
-        ]
-
-        roi_image = InputImageMeta(image_array=roi_image_array)
-
         if use_classifier:
-            ans = detect_bubble_inference(roi_image)
+            roi_image_array = worksheet_meta.cropped_image.image_array[
+                y1:y2, 
+                x1:x2
+            ]
+            roi_image = InputImageMeta(image_array=roi_image_array)
+
+            # Save ROI image if debug enabled
+            if debug:
+                BUBBLES_FOLDER.mkdir(parents=True, exist_ok=True)
+                roi_filename = BUBBLES_FOLDER / f"q{q_no:02d}_roi.jpg"
+                cv2.imwrite(str(roi_filename), roi_image_array)
+
+            ans = detect_bubble_inference(roi_image, debug=debug, question_number=q_no)
             answers.append(ans)
             logger.info("Detected answer for question %s: %s (Correct answer: %s)", q_no, ans, q_ans)
 
         else:
-            ans, all_contours, bubble_candidates = detect_bubble(roi_image)
+            roi_image_array = worksheet_meta.preprocessed_image.image_array[
+                y1:y2, 
+                x1:x2
+            ]
+            roi_image = InputImageMeta(image_array=roi_image_array)
+
+            ans, all_contours, bubble_candidates = detect_bubble(roi_image, debug=debug, question_number=q_no)
 
             answers.append(ans)
             logger.debug("Detected answer for question %s: %s (Correct answer: %s)", q_no, ans, q_ans)
@@ -269,11 +292,13 @@ def show_roi_zones(points, debug_image):
 
 
 # def detect_bubble(worksheet_meta: WorksheetTemplate, roi_coordinates: ROI) -> str:
-def detect_bubble(roi_image: InputImageMeta) -> tuple[str, list[ContourData], list[ContourData]]:
+def detect_bubble(roi_image: InputImageMeta, debug=False, question_number=0) -> tuple[str, list[ContourData], list[ContourData]]:
     """Detect filled bubble cropped ROI image. Also draw on debug and checked images.
 
     Args:
-        roi_coordinates (ROI): Coordinates of the cropped ROI image for a single question
+        roi_image (InputImageMeta): Metadata of the question region (ROI) image.
+        debug (bool): Whether to save individual bubble images.
+        question_number (int): Question number for naming saved images.
 
     Returns:
         str: Detected answer ('A', 'B', 'C', 'D') or '' if none/multiple detected,
@@ -387,6 +412,14 @@ def detect_bubble(roi_image: InputImageMeta) -> tuple[str, list[ContourData], li
             logger.info(
                 "Bubble %s: fill_ratio = %s, area = %s, circularity = %s.",
                 chr(65+i), fill_ratio, bubble_area, bubble_circularity)
+
+            # Save individual bubble image if debug enabled
+            if debug:
+                BUBBLES_FOLDER.mkdir(parents=True, exist_ok=True)
+                x, y, w, h = cv2.boundingRect(contour_meta.contour)
+                bubble_crop = q_crop[y:y+h, x:x+w]
+                bubble_filename = BUBBLES_FOLDER / f"q{question_number:02d}_bubble_{chr(65+i)}.jpg"
+                cv2.imwrite(str(bubble_filename), bubble_crop)
 
             if fill_ratio > FILL_THRESHOLD:
                 filled_index.append(i)
