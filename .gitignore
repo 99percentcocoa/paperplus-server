@@ -12,6 +12,8 @@ config.json
 .env
 secrets.json
 .pylintrc
+nginx.conf
+paperplus.service
 
 # Logs and temp files
 *.log
