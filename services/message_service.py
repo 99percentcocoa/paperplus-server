@@ -5,6 +5,8 @@ This module contains functions for validating incoming WhatsApp messages
 and processing them through the grading pipeline.
 """
 
+# NOCHECK VERSION - skips checking, just validates and logs
+
 import logging
 import threading
 import json
@@ -77,41 +79,20 @@ def handle_message(data, session_id):
                         "Please take a complete photo of the worksheet. ⟳ \n"
                         "कृपया कार्यपत्रिका संपूर्ण दिसेल असा फोटो काढा. ⟳")
 
-                # Save preprocessed image to correct file path for later access
-                save_preprocessed(worksheet)
-
-                # debug, checked will be saved at the end, so no need to save here
-
-                # Process OMR answers
-                answers, q_score, omr_success = check_worksheet(worksheet_meta=worksheet, use_classifier=True, debug=False)
-                score = sum(q_score) if q_score else 0
-
-                if omr_success:
-                    # Successful checking!
-                    save_debug(worksheet)
-                    save_checked(worksheet)
-                    send_message(
-                        from_no,
-                        f"Your marks: {score}/{len(answers)} \n" 
-                        f"तुमचे मार्क: {score}/{len(answers)}")
-                    
-                    logger.info("Sending checked image.")
-                    send_image(from_no, worksheet.checked_image_url)
-
-                    logsheet_args = (from_no, file_url, worksheet.debug_image.image_url, worksheet.checked_image_url, json.dumps(answers), score, log_url)
-                    logger.debug("Logging to Google Sheets: %s", logsheet_args)
-                    threading.Thread(target=log_to_sheet, args=logsheet_args).start()
-
-                else:
-                    # OMR failed - missing question tags
-                    send_message(
-                        from_no, "Please try again. ⟳ \n फोटो परत काढा. ⟳")
-
                     # Log failed scan
                     logsheet_args = (from_no, file_url, "",
                                      "", "failed", "", log_url)
                     threading.Thread(target=log_to_sheet,
                                      args=logsheet_args).start()
+                
+                else:
+                    # scan successful - return thank you message and log
+                    send_message(from_no, "Thank you! ✅ \n धन्यवाद! ✅")
+                    logsheet_args = (from_no, file_url, "", "", "scanned", "", log_url)
+                    threading.Thread(target=log_to_sheet, args=logsheet_args).start()
+
+                # Save preprocessed image to correct file path for later access
+                save_preprocessed(worksheet)
             else:
                 # Handle non-image messages
                 if from_no:
