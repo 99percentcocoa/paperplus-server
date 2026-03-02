@@ -153,6 +153,9 @@ def scan_image(input_image: InputImageMeta) -> WorksheetTemplate:
         corner_detections: (DetectionResult) Result of AprilTag detections.
     """
 
+    if input_image.image_array is None:
+        raise ValueError("Input image array is None. Please load the image before scanning.")
+
     corner_detection_result = detect_apriltags(input_image, "36h11")
     cropped_image, worksheet_id = crop_image(input_image, corner_detection_result)
     row_detection_result = detect_apriltags(cropped_image, "25h9")
