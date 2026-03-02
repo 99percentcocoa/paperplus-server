@@ -98,8 +98,8 @@ class DetectionResult:
         num_detections = len(self.detections)
         
         if self.tag_family == "36h11":
-            if num_detections < 4:
-                raise ValueError(f"Tag family '36h11' requires at least 4 detections, but got {num_detections}")
+            if num_detections != 4:
+                raise ValueError(f"Tag family '36h11' requires exactly 4 detections, but got {num_detections}")
             
             # Lazy import to avoid circular dependency
             from services.image_service import sort_detections_clockwise
