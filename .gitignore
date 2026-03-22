@@ -6,6 +6,7 @@ __pycache__/
 venv/
 serverenv/
 env/
+.venv/
 
 # Local settings and secrets
 config.json
