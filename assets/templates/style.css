@@ -1,0 +1,225 @@
+@font-face {
+  font-family: "NotoSansDevanagari";
+  src: url("NotoSansDevanagari-Bold.ttf") format("truetype");
+}
+
+@page {
+  size: A4;
+  margin: 1mm;
+  border: 5px solid black;
+}
+
+body {
+  font-size: 14px;
+  line-height: 1.0;
+}
+
+header {
+  text-align: center;
+  /* margin-bottom: 0px; */
+  border-bottom: 2px solid black;
+  padding-bottom: 0px;
+}
+
+/* .header-container {
+  width: fit-content;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.logo {
+  height: 50px;
+  width: auto;
+  margin-right: 20px;
+} */
+
+.whatsapp_logo {
+  height: 20px;
+  width: auto;
+}
+
+header p {
+  font-family: monospace;
+  font-size: 15px;
+  margin: 2mm auto 0 auto;
+  font-weight: bold;
+}
+
+h1 {
+  margin: 0;
+  font-size: 24px;
+}
+
+h2 {
+  font-family: monospace;
+  font-size: 20px;
+  border: 1px solid rgb(74, 68, 68);
+  width: 80%;
+  margin: 5px auto;
+  margin-bottom: 0px;
+}
+
+#logo {
+  text-align: center;
+  margin-top: 2mm;
+}
+
+.logo {
+  height: 50px;
+  width: auto;
+}
+
+.marker {
+  position: fixed;
+  width: 10mm;
+  height: 10mm;
+  background: black;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+/* Positions */
+.top-left {
+  top: 10px;
+  left: 10px;
+}
+
+.top-right {
+  top: 10px;
+  right: 10px;
+}
+
+.bottom-left {
+  bottom: 10px;
+  left: 10px;
+}
+
+.bottom-right {
+  bottom: 10px;
+  right: 10px;
+}
+
+/* instructions container div */
+#instructions {
+  margin-top: 3mm;
+  margin-bottom: 2mm;
+  width: 95%;
+  margin-left: auto;
+  margin-right: auto;
+  border: 1px dashed black;
+  border-radius: 8px;
+}
+
+.instructions-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  border-spacing: 1mm;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.instructions-table td {
+  padding-top: 1mm;
+  padding-bottom: 1mm;
+}
+
+.instructions-text {
+  width: 20%;
+  font-weight: bold;
+  font-size: 15px;
+}
+
+.instructions-example {
+  border-left: 1px dashed black;
+  border-right: 1px dashed black;
+  font-weight: bold;
+}
+
+.instructions-example:nth-child(2) {
+  border-left: none;
+  border-right: 1px dashed black;
+}
+
+.instructions-example:nth-child(6) {
+  border-left: 1px dashed black;
+  border-right: none;
+}
+
+.instructions-example img {
+  height: 8mm;
+  width: auto;
+  vertical-align: middle;
+  margin-bottom: 1mm;
+}
+
+/* Overall table for two columns */
+.questions-table {
+  width: 90%;
+  border-collapse: separate;
+  border-spacing: 5px 10px; /* note: the vertical spacing applies to the first element also */
+  table-layout: fixed;
+  margin: 0px auto;
+}
+
+/* red border for debugging */
+/* td {
+  border: 1px solid red;
+} */
+
+/* td which contains the row marker */
+.row-marker {
+  width: 12mm;
+  padding: 0;
+  vertical-align: middle;
+}
+
+/* other .markers (corner markers) have fixed position 
+which we don't want for row markers */
+.row-marker .marker {
+  position: relative;
+}
+
+/* Question box styling */
+.question {
+  border: 1px solid #000;
+  border-radius: 5px;
+  padding: 6px 0px;
+  page-break-inside: avoid;
+
+  height: 15mm;
+  min-height: 15mm;
+}
+
+.question p {
+  margin: 0 0 5px 1mm;
+  font-weight: bold;
+}
+
+/* Table layout for options */
+.options-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed; /* ensures all cells same width */
+  margin: 0;           /* remove default spacing */
+}
+
+.options-table td {
+  text-align: center;
+  vertical-align: top;
+  padding: 0;          /* remove extra padding */
+  width: 25%;           /* 4 options */
+  word-wrap: break-word; 
+}
+
+/* Circle styling */
+.circle {
+  width: 13px;
+  height: 13px;
+  border: 2.5px solid #000;
+  border-radius: 50%;
+  display: block;
+  margin: 2px auto 2px auto; /* top & bottom small margin only, centered horizontally */
+}
