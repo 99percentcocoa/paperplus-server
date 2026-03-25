@@ -53,4 +53,12 @@ class Config:
         "G": {1: 0.05, 2: 0.05, 3: 0.05, 4: 0.05, 5: 0.05, 6: 0.25, 7: 0.5},  # 1-5 (25%) split evenly
     }
 
+    # PDF Generation
+    ORIENTATION_ID = 586
+    TAGS_PATH = os.getenv('TAGS_PATH')
+    TEMPLATES_PATH = os.getenv('TEMPLATES_PATH')
+    PDF_WRITE_PATH = os.getenv('PDF_WRITE_PATH')
+    WORKSHEET_JSON_PATH = os.getenv('WORKSHEET_JSON_PATH')
+    HTML_BASE_DIR = os.getenv('HTML_BASE_DIR')
+
 SETTINGS = Config()

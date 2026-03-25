@@ -1,0 +1,118 @@
+import json
+from pathlib import Path
+from typing import Optional
+from services.pdf_generator_service import generate_tags_html, generate_questions_html, getTagNumbers
+from config import SETTINGS
+
+TAGS_PATH = SETTINGS.TAGS_PATH
+TEMPLATES_PATH = SETTINGS.TEMPLATES_PATH
+PDF_WRITE_PATH = SETTINGS.PDF_WRITE_PATH
+WORKSHEET_JSON_PATH = SETTINGS.WORKSHEET_JSON_PATH
+HTML_BASE_DIR = SETTINGS.HTML_BASE_DIR
+
+def generate_worksheet_pdf(
+    worksheet_id: int,
+    student_name: str,
+    student_iyatta: str,
+    worksheet_date: str,
+    worksheet_json_filename: str,
+    tags_folder_path: Optional[str] = None,
+    output_path: Optional[str] = PDF_WRITE_PATH,
+    base_dir: Optional[str] = HTML_BASE_DIR
+) -> bytes:
+    """
+    Generate a worksheet PDF and return its bytes.
+
+    Args:
+      worksheet_id: numeric id used by the tag functions.
+      student_name: name to render on the worksheet header.
+      student_iyatta: class/grade to render on the header.
+      worksheet_date: date string to render on the header.
+      worksheet_json_filename: name of the worksheet json file within WORKSHEET_JSON_PATH.
+    tags_folder_path: optional override for tags folder path.
+      output_path: if provided, the PDF will be written to this path or directory (default: PDF_WRITE_PATH).
+    base_dir: base directory used to derive tags/ and templates/ paths (default: configured HTML_BASE_DIR).
+
+    Returns:
+      The generated PDF as bytes.
+    """
+
+    effective_base_dir = Path(base_dir or HTML_BASE_DIR)
+    effective_tags_folder_path = Path(tags_folder_path) if tags_folder_path else (effective_base_dir / "tags")
+    effective_templates_path = effective_base_dir / "templates"
+
+    # open worksheet json once and select language-specific template
+    with open(Path(WORKSHEET_JSON_PATH) / worksheet_json_filename, "r", encoding="utf-8") as f:
+        worksheet_data = json.load(f)
+
+    # Support both formats:
+    # 1) schema object: {"language": "mr", "questions": [...]}
+    # 2) legacy list: [{"language": "mr", "questions": [...]}]
+    if isinstance(worksheet_data, list):
+        if not worksheet_data:
+            raise ValueError("worksheet JSON list is empty")
+        worksheet = worksheet_data[0]
+    elif isinstance(worksheet_data, dict):
+        worksheet = worksheet_data
+    else:
+        raise ValueError("worksheet JSON must be an object or a non-empty list")
+
+    language = worksheet.get("language")
+    questions = worksheet["questions"]
+
+    if language == "en":
+        template_filename = "template_en.html"
+    elif language == "mr":
+        template_filename = "template_mr.html"
+    else:
+        raise ValueError("worksheet 'language' must be 'en' or 'mr'")
+
+    # read template from package directory
+    template_path = effective_templates_path / template_filename
+    with open(template_path, "r", encoding="utf-8") as f:
+        template_html = f.read()
+
+    # generate questions HTML and tags HTML
+    questions_html = generate_questions_html(questions, str(effective_tags_folder_path))
+    tags_html = generate_tags_html(getTagNumbers(worksheet_id), str(effective_tags_folder_path))
+
+    # fill template placeholders
+    final_html = (
+        template_html
+        .replace("{{tags_html}}", tags_html)
+        .replace("{{questions}}", questions_html)
+        .replace("{{worksheet_id}}", str(worksheet_id))
+        .replace("{{student_name}}", student_name)
+        .replace("{{student_iyatta}}", student_iyatta)
+        .replace("{{worksheet_date}}", worksheet_date)
+    )
+
+    # create PDF
+    # Import weasyprint lazily so errors are raised only when generating
+    from weasyprint import HTML
+
+    # weasyprint needs a base_url so relative asset URLs resolve properly
+    pdf_bytes = HTML(string=final_html, base_url=str(effective_base_dir)).write_pdf()
+
+    # optionally write to disk
+    if output_path:
+        with open(output_path, "wb") as f:
+            f.write(pdf_bytes)
+
+    return pdf_bytes
+
+
+if __name__ == "__main__":
+    # Example usage
+    generate_worksheet_pdf(
+        worksheet_id=1,
+        student_name="John Doe",
+        student_iyatta="5",
+        worksheet_date="2023-01-01",
+        worksheet_json_filename="mr_level_A.json",
+        output_path="/home/saarang/paperplus_server/files/pdf/worksheet_1.pdf",
+        base_dir="/home/saarang/paperplus_server/assets"
+    )
+
+
+__all__ = ["generate_worksheet_pdf"]
