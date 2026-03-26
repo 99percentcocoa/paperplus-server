@@ -19,6 +19,7 @@ paperplus.service
 # Logs and temp files
 *.log
 *.tmp
+paperplus.sql
 
 # System or editor files
 .DS_Store
