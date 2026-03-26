@@ -236,15 +236,15 @@ def create_worksheet_level_distribution(worksheet_level: str) -> dict:
     return skill_distribution
 
 
-def worksheet_to_json(name: str, worksheet: list, level: str, language: str) -> list:
+def worksheet_to_json(name: str, worksheet: list, level: str, language: str) -> dict:
     """
-    Convert worksheet to JSON-serializable format matching example_worksheet.json template.
+    Convert worksheet to JSON-serializable object.
     
     Args:
         worksheet: List of Question objects
     
     Returns:
-        List with [{"answerKey": [...]}, [...questions...]]
+        Worksheet object with title, level, language, and questions.
     """
     questions = []
     answer_key = []
@@ -262,29 +262,27 @@ def worksheet_to_json(name: str, worksheet: list, level: str, language: str) -> 
         })
         answer_key.append(answer_letter)
     
-    return [
-        {
-            "title": name,
-            "level": level,
-            "language": language,
-            "questions": questions
-        }
-    ]
+    return {
+        "title": name,
+        "level": level,
+        "language": language,
+        "questions": questions
+    }
 
 
-def save_worksheet(worksheet_data: list, filepath: str = "worksheet.json"):
+def save_worksheet(worksheet_data: dict, filepath: str = "worksheet.json"):
     """
-    Save worksheet data to JSON file.
+    Save worksheet object to JSON file.
     
     Args:
-        worksheet_data: List with [{"answerKey": [...]}, [...questions...]]
+        worksheet_data: Worksheet object
         filepath: Output file path
     """
     with open(filepath, "w", encoding="utf-8") as f:
         json.dump(worksheet_data, f, indent=2, ensure_ascii=False)
     print(f"Worksheet saved to {filepath}")
 
-def create_worksheet_json(title: str, level: str, language: str) -> list:
+def create_worksheet_json(title: str, level: str, language: str) -> dict:
     """
     Create a worksheet JSON structure from level and language.
     
@@ -294,7 +292,7 @@ def create_worksheet_json(title: str, level: str, language: str) -> list:
         language: Language code (e.g., "en", "mr")
     
     Returns:
-        List as per worksheet JSON schema.
+        Worksheet object as per worksheet JSON schema.
     """
     distribution = create_worksheet_level_distribution(level)
     worksheet = create_worksheet(skill_distribution=distribution, language=language)
@@ -319,7 +317,7 @@ if __name__ == "__main__":
         
         # Print a preview
         print(f"Preview of first 2 questions:")
-        questions = worksheet_json[0].get("questions", [])
+        questions = worksheet_json.get("questions", [])
         for q in questions[:2]:
             print(f"\n{q['question_text']}")
             for i, opt in enumerate(q['options']):

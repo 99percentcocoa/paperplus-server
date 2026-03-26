@@ -243,8 +243,8 @@ def import_skills_from_json(json_path: str | Path):
 # Worksheets
 # ---------------------------------------------------------------------------
 
-def create_worksheet(worksheet_level: str, worksheet_json: dict | list,
-                     is_test: bool = False, max_score: int = 20) -> int:
+def create_worksheet(worksheet_json: dict,
+                     is_test: bool = False) -> int:
     """
     Insert a new worksheet row and return the generated worksheet_id.
 
@@ -253,14 +253,16 @@ def create_worksheet(worksheet_level: str, worksheet_json: dict | list,
     - Inserts the worksheet record
     - Returns worksheet_id so it can be embedded in the JSON / used for questions
     """
-    lang = worksheet_json.get("language") if isinstance(worksheet_json, dict) else None
+    lang = worksheet_json.get("language")
+    level = worksheet_json.get("level")
+    max_score = len(worksheet_json.get("questions", []))
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """INSERT INTO worksheets (worksheet_level, is_test, max_score, lang, worksheet_json)
                    VALUES (%s, %s, %s, %s, %s)
                    RETURNING worksheet_id""",
-                (worksheet_level, is_test, max_score, lang, json.dumps(worksheet_json)),
+                (level, is_test, max_score, lang, json.dumps(worksheet_json)),
             )
             return cur.fetchone()["worksheet_id"]
 
@@ -672,8 +674,8 @@ def get_media(owner_type: str, owner_id: int) -> list[dict]:
 # Composite / high-level flows
 # ---------------------------------------------------------------------------
 
-def add_worksheet_to_db(worksheet_level: str, worksheet_json: dict | list,
-                        is_test: bool = False, max_score: int = 20) -> dict:
+def add_worksheet_to_db(worksheet_json: dict | list,
+                        is_test: bool = False) -> dict:
     """
     Full flow: "add a new worksheet to the database"
 
@@ -686,7 +688,7 @@ def add_worksheet_to_db(worksheet_level: str, worksheet_json: dict | list,
     questions = worksheet_json if isinstance(worksheet_json, list) else worksheet_json.get("questions", [])
 
     # Insert worksheet
-    worksheet_id = create_worksheet(worksheet_level, worksheet_json, is_test, max_score)
+    worksheet_id = create_worksheet(worksheet_json, is_test=is_test)
 
     # Insert questions
     question_ids = insert_questions_for_worksheet(worksheet_id, questions)
@@ -710,6 +712,7 @@ def add_worksheet_to_db(worksheet_level: str, worksheet_json: dict | list,
                 (json.dumps(enriched), worksheet_id),
             )
 
+    print(f"Inserted worksheet {worksheet_id} with {len(question_ids)} questions")
     return {"worksheet_id": worksheet_id, "question_ids": question_ids}
 
 
