@@ -150,10 +150,6 @@ def get_student(student_id: str) -> dict | None:
             return cur.fetchone()
 
 
-def get_student_by_phone(from_number: str) -> dict | None:
-    """Look up a student by their phone number (student_id stores phone)."""
-    return get_student(from_number)
-
 
 def update_student_level(student_id: str, new_level: str):
     """Change a student's current worksheet level."""
@@ -247,7 +243,7 @@ def import_skills_from_json(json_path: str | Path):
 # Worksheets
 # ---------------------------------------------------------------------------
 
-def create_worksheet(worksheet_level: str, lang: str, worksheet_json: dict | list,
+def create_worksheet(worksheet_level: str, worksheet_json: dict | list,
                      is_test: bool = False, max_score: int = 20) -> int:
     """
     Insert a new worksheet row and return the generated worksheet_id.
@@ -257,6 +253,7 @@ def create_worksheet(worksheet_level: str, lang: str, worksheet_json: dict | lis
     - Inserts the worksheet record
     - Returns worksheet_id so it can be embedded in the JSON / used for questions
     """
+    lang = worksheet_json.get("language") if isinstance(worksheet_json, dict) else None
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -331,24 +328,25 @@ def insert_questions_for_worksheet(worksheet_id: int, questions: list[dict]) -> 
     question_ids = []
     with get_connection() as conn:
         with conn.cursor() as cur:
-            for q in questions:
+            for position, q in enumerate(questions, start=1):
                 skill_code = q["skill_code"]
+                index = q.get("index", position)
                 cur.execute(
-                    """INSERT INTO questions (worksheet_id, skill_code, question_json)
-                       VALUES (%s, %s, %s)
+                    """INSERT INTO questions (worksheet_id, skill_code, index, question_json)
+                       VALUES (%s, %s, %s, %s)
                        RETURNING question_id""",
-                    (worksheet_id, skill_code, json.dumps(q)),
+                    (worksheet_id, skill_code, index, json.dumps(q)),
                 )
                 question_ids.append(cur.fetchone()["question_id"])
     return question_ids
 
 
 def get_questions_for_worksheet(worksheet_id: int) -> list[dict]:
-    """Return all question rows for a worksheet, ordered by question_id."""
+    """Return all question rows for a worksheet, ordered by index."""
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT * FROM questions WHERE worksheet_id = %s ORDER BY question_id",
+                "SELECT * FROM questions WHERE worksheet_id = %s ORDER BY index",
                 (worksheet_id,),
             )
             return cur.fetchall()
@@ -402,6 +400,24 @@ def get_assignment_by_student_worksheet(student_id: str, worksheet_id: int) -> d
                    WHERE student_id = %s AND worksheet_id = %s AND submitted_at IS NULL
                    ORDER BY assigned_at DESC LIMIT 1""",
                 (student_id, worksheet_id),
+            )
+            return cur.fetchone()
+
+
+def get_assignment_by_worksheet(worksheet_id: int) -> dict | None:
+    """
+    Find the most recent unsubmitted assignment for a worksheet.
+
+    Valid for regular (non-test) worksheets where each worksheet is assigned
+    to exactly one student at a time.
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT * FROM assignments
+                   WHERE worksheet_id = %s AND submitted_at IS NULL
+                   ORDER BY assigned_at DESC LIMIT 1""",
+                (worksheet_id,),
             )
             return cur.fetchone()
 
@@ -491,6 +507,19 @@ def get_latest_submission(student_id: str, worksheet_id: int) -> dict | None:
                    WHERE student_id = %s AND worksheet_id = %s
                    ORDER BY submitted_at DESC LIMIT 1""",
                 (student_id, worksheet_id),
+            )
+            return cur.fetchone()
+
+
+def get_latest_submission_by_worksheet(worksheet_id: int) -> dict | None:
+    """Return the most recent submission for a worksheet (any student)."""
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT * FROM submissions
+                   WHERE worksheet_id = %s
+                   ORDER BY submitted_at DESC LIMIT 1""",
+                (worksheet_id,),
             )
             return cur.fetchone()
 
@@ -643,7 +672,7 @@ def get_media(owner_type: str, owner_id: int) -> list[dict]:
 # Composite / high-level flows
 # ---------------------------------------------------------------------------
 
-def add_worksheet_to_db(worksheet_level: str, lang: str, worksheet_json: dict | list,
+def add_worksheet_to_db(worksheet_level: str, worksheet_json: dict | list,
                         is_test: bool = False, max_score: int = 20) -> dict:
     """
     Full flow: "add a new worksheet to the database"
@@ -657,7 +686,7 @@ def add_worksheet_to_db(worksheet_level: str, lang: str, worksheet_json: dict | 
     questions = worksheet_json if isinstance(worksheet_json, list) else worksheet_json.get("questions", [])
 
     # Insert worksheet
-    worksheet_id = create_worksheet(worksheet_level, lang, worksheet_json, is_test, max_score)
+    worksheet_id = create_worksheet(worksheet_level, worksheet_json, is_test, max_score)
 
     # Insert questions
     question_ids = insert_questions_for_worksheet(worksheet_id, questions)
@@ -684,29 +713,30 @@ def add_worksheet_to_db(worksheet_level: str, lang: str, worksheet_json: dict | 
     return {"worksheet_id": worksheet_id, "question_ids": question_ids}
 
 
-def process_submission(student_id: str, worksheet_id: int, score: int,
+def process_submission(worksheet_id: int, score: int,
                        from_number: str, answers_json: list[dict]) -> dict:
     """
     Full flow: "receive a submission from a student / process the worksheet"
 
-    1. Look up assignment by student + worksheet
-    2. Create submission record
-    3. Mark assignment as submitted
-    4. Build attempt records from answers_json
-    5. Insert attempts
-    6. Recalculate skill mastery for affected skills
-    7. Return {submission_id, assignment_id, attempts_count}
+    1. Look up assignment by worksheet_id (valid since 1 assignment per non-test worksheet)
+    2. Derive student_id from the assignment
+    3. Create submission record
+    4. Mark assignment as submitted
+    5. Build attempt records from answers_json
+    6. Insert attempts
+    7. Recalculate skill mastery for affected skills
+    8. Return {submission_id, assignment_id, student_id, attempts_count}
 
     answers_json is a list like:
         [{"question_index": 1, "selected": "B", "is_correct": true}, ...]
     """
-    # Find the assignment
-    assignment = get_assignment_by_student_worksheet(student_id, worksheet_id)
-    assignment_id = assignment["assignment_id"] if assignment else None
+    # Find the assignment by worksheet — derive student from it
+    assignment = get_assignment_by_worksheet(worksheet_id)
+    if assignment is None:
+        raise ValueError(f"No open assignment found for worksheet_id={worksheet_id}")
 
-    # If no open assignment exists, create one on-the-fly so the FK is satisfied
-    if assignment_id is None:
-        assignment_id = create_assignment(student_id, worksheet_id)
+    assignment_id = assignment["assignment_id"]
+    student_id = assignment["student_id"]
 
     # Create submission
     submission_id = create_submission(
@@ -721,9 +751,9 @@ def process_submission(student_id: str, worksheet_id: int, score: int,
     attempts = []
     affected_skills = set()
     for ans in answers_json:
-        q_index = ans.get("question_index", 0) - 1  # 0-based
-        if 0 <= q_index < len(questions):
-            q = questions[q_index]
+        q_index = ans.get("question_index", 1)  # 1-based
+        if 0 < q_index <= len(questions):
+            q = questions[q_index - 1]
             skill = q["skill_code"]
             attempts.append({
                 "question_id": q["question_id"],
@@ -742,25 +772,33 @@ def process_submission(student_id: str, worksheet_id: int, score: int,
     return {
         "submission_id": submission_id,
         "assignment_id": assignment_id,
+        "student_id": student_id,
         "attempts_count": len(attempts),
     }
 
 
-def overwrite_submission_flow(student_id: str, worksheet_id: int, score: int,
+def overwrite_submission_flow(worksheet_id: int, score: int,
                               answers_json: list[dict]) -> dict:
     """
     Manual correction flow: "if already exists, overwrite it"
 
-    1. Find existing submission
-    2. Delete old attempts
-    3. Overwrite submission score/answers
-    4. Re-insert new attempts
-    5. Recalculate mastery
+    1. Derive student_id from the assignment (same as process_submission)
+    2. Find existing submission by worksheet
+    3. Delete old attempts
+    4. Overwrite submission score/answers
+    5. Re-insert new attempts
+    6. Recalculate mastery
     """
-    existing = get_latest_submission(student_id, worksheet_id)
+    # Derive student_id from the assignment
+    assignment = get_assignment_by_worksheet(worksheet_id)
+    if assignment is None:
+        raise ValueError(f"No assignment found for worksheet_id={worksheet_id}")
+    student_id = assignment["student_id"]
+
+    existing = get_latest_submission_by_worksheet(worksheet_id)
     if existing is None:
         # No prior submission — fall back to normal flow
-        return process_submission(student_id, worksheet_id, score, "", answers_json)
+        return process_submission(worksheet_id, score, "", answers_json)
 
     submission_id = existing["submission_id"]
 
@@ -799,10 +837,16 @@ def overwrite_submission_flow(student_id: str, worksheet_id: int, score: int,
     }
 
 
-def validate_sender(from_number: str) -> dict | None:
+def validate_sender(from_number: str) -> bool:
     """
     Flow: "check whether from_number is in users or not"
 
-    Returns the student row if the phone number is registered, else None.
+    Returns True if the phone number belongs to an active user, else False.
     """
-    return get_student_by_phone(from_number)
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT 1 FROM users WHERE phone_number = %s AND is_active = true",
+                (from_number,),
+            )
+            return cur.fetchone() is not None
