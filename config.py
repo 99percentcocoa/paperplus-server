@@ -61,4 +61,7 @@ class Config:
     WORKSHEET_JSON_PATH = os.getenv('WORKSHEET_JSON_PATH')
     HTML_BASE_DIR = os.getenv('HTML_BASE_DIR')
 
+    # Database
+    DATABASE_URL = os.getenv('DATABASE_URL')
+
 SETTINGS = Config()
