@@ -34,3 +34,6 @@ debug/
 checked/
 logs/
 offline/
+csv/
+json/
+pdf/
