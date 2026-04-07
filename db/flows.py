@@ -56,6 +56,7 @@ def add_worksheet_to_db(worksheet_json: dict | list,
     return {"worksheet_id": worksheet_id, "question_ids": question_ids}
 
 
+# note: this function does not do any checking.
 def process_submission(worksheet_id: int, score: int,
                        from_number: str, answers_json: list[dict]) -> dict:
     """
@@ -78,7 +79,7 @@ def process_submission(worksheet_id: int, score: int,
     student_id = assignment["student_id"]
 
     submission_id = create_submission(
-        student_id, assignment_id, worksheet_id, score, from_number, answers_json
+        assignment_id, worksheet_id, score, from_number, answers_json
     )
 
     mark_assignment_submitted(assignment_id)
