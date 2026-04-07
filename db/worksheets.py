@@ -9,14 +9,15 @@ def create_worksheet(worksheet_json: dict, is_test: bool = False) -> int:
     """Insert a new worksheet row and return the generated worksheet_id."""
     lang = worksheet_json.get("language")
     level = worksheet_json.get("level")
+    title = worksheet_json.get("title")
     max_score = len(worksheet_json.get("questions", []))
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                """INSERT INTO worksheets (worksheet_level, is_test, max_score, lang, worksheet_json)
-                   VALUES (%s, %s, %s, %s, %s)
+                """INSERT INTO worksheets (worksheet_level, is_test, max_score, lang, title, worksheet_json)
+                   VALUES (%s, %s, %s, %s, %s, %s)
                    RETURNING worksheet_id""",
-                (level, is_test, max_score, lang, json.dumps(worksheet_json)),
+                (level, is_test, max_score, lang, title, json.dumps(worksheet_json)),
             )
             return cur.fetchone()["worksheet_id"]
 
