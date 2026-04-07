@@ -15,6 +15,7 @@ secrets.json
 .pylintrc
 nginx.conf
 paperplus.service
+paperplus.sql
 
 # Logs and temp files
 *.log
@@ -34,3 +35,6 @@ debug/
 checked/
 logs/
 offline/
+csv/
+json/
+pdf/
