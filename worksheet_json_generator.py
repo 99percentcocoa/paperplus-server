@@ -5,6 +5,7 @@ Saves the worksheet to a JSON file.
 
 import json
 import random
+import argparse
 from pathlib import Path
 from services.question_generator_service import gen_questions, number_to_letter, question_to_marathi, _load_skills
 from services.distractor_generator_service import build_distractors
@@ -301,22 +302,67 @@ def create_worksheet_json(title: str, level: str, language: str) -> dict:
 
 
 if __name__ == "__main__":
-    print("Creating 20-question worksheets for levels A-G...")
-    
-    # Create worksheets for each level (A-G)
-    for level in "ABCDEFG":
-        
-        worksheet_json = create_worksheet_json(title=f"Worksheet Level {level}", level=level, language="mr")
-        
-        # Save to file
-        wsname = f"mr_level_{level}"
-        filename = f"{wsname}.json"
-        filepath = Path(__file__).parent / "files" / "json" / filename
+    # Usage:
+    # python3 worksheet_json_generator.py --level A --language en
+    # python3 worksheet_json_generator.py --level A --language en --filename custom_name
+    # python3 worksheet_json_generator.py --all-levels --language mr --output-dir files/json
+    parser = argparse.ArgumentParser(description="Generate worksheet JSON files.")
+    parser.add_argument(
+        "--level",
+        default="A",
+        help="Worksheet level (A-G). Ignored when --all-levels is set.",
+    )
+    parser.add_argument(
+        "--all-levels",
+        action="store_true",
+        help="Generate worksheets for all levels A-G.",
+    )
+    parser.add_argument(
+        "--language",
+        default="en",
+        choices=["en", "mr"],
+        help="Worksheet language.",
+    )
+    parser.add_argument(
+        "--output-dir",
+        default=str(Path(__file__).parent / "files" / "json"),
+        help="Directory to save generated worksheet JSON files.",
+    )
+    parser.add_argument(
+        "--filename",
+        default=None,
+        help="Optional output filename for single-level generation (without .json).",
+    )
 
+    args = parser.parse_args()
+
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    if args.all_levels and args.filename:
+        raise ValueError("--filename cannot be used with --all-levels")
+
+    levels = "ABCDEFG" if args.all_levels else args.level.upper()
+    if not args.all_levels and levels not in "ABCDEFG":
+        raise ValueError("--level must be one of A, B, C, D, E, F, G")
+
+    print(f"Creating 20-question worksheet JSON for level(s): {', '.join(levels)}")
+
+    for level in levels:
+        worksheet_json = create_worksheet_json(
+            title=f"Worksheet Level {level}",
+            level=level,
+            language=args.language,
+        )
+
+        if args.filename:
+            filename = args.filename if args.filename.lower().endswith(".json") else f"{args.filename}.json"
+        else:
+            filename = f"{args.language}_level_{level}.json"
+        filepath = output_dir / filename
         save_worksheet(worksheet_json, filepath)
-        
-        # Print a preview
-        print(f"Preview of first 2 questions:")
+
+        print("Preview of first 2 questions:")
         questions = worksheet_json.get("questions", [])
         for q in questions[:2]:
             print(f"\n{q['question_text']}")

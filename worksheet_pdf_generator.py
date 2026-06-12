@@ -1,4 +1,5 @@
 import json
+import argparse
 from pathlib import Path
 from typing import Optional
 from services.pdf_generator_service import generate_tags_html, generate_questions_html, getTagNumbers
@@ -103,15 +104,43 @@ def generate_worksheet_pdf(
 
 
 if __name__ == "__main__":
-    # Example usage
+    # Usage:
+    # python3 worksheet_pdf_generator.py --worksheet-id 1 --student-name "John Doe" \
+    #   --student-iyatta 5 --worksheet-date 2023-01-01 --worksheet-json-filename en_level_A.json \
+    #   --output-path /home/saarang/paperplus_server/files/pdf/worksheet_2.pdf \
+    #   --base-dir /home/saarang/paperplus_server/assets
+    parser = argparse.ArgumentParser(description="Generate a worksheet PDF from a worksheet JSON file.")
+    parser.add_argument("--worksheet-id", type=int, required=True, help="Numeric worksheet id used by the tag functions.")
+    parser.add_argument("--student-name", required=True, help="Student name to render on the worksheet header.")
+    parser.add_argument("--student-iyatta", required=True, help="Class/grade to render on the worksheet header.")
+    parser.add_argument("--worksheet-date", required=True, help="Date string to render on the worksheet header.")
+    parser.add_argument(
+        "--worksheet-json-filename",
+        required=True,
+        help="Worksheet JSON filename within the configured worksheet JSON folder.",
+    )
+    parser.add_argument("--tags-folder-path", default=None, help="Optional override for tags folder path.")
+    parser.add_argument(
+        "--output-path",
+        default=PDF_WRITE_PATH,
+        help="Path to write the generated PDF file.",
+    )
+    parser.add_argument(
+        "--base-dir",
+        default=HTML_BASE_DIR,
+        help="Base directory used to resolve tags/ and templates/ paths.",
+    )
+
+    args = parser.parse_args()
     generate_worksheet_pdf(
-        worksheet_id=1,
-        student_name="John Doe",
-        student_iyatta="5",
-        worksheet_date="2023-01-01",
-        worksheet_json_filename="mr_level_A.json",
-        output_path="/home/saarang/paperplus_server/files/pdf/worksheet_1.pdf",
-        base_dir="/home/saarang/paperplus_server/assets"
+        worksheet_id=args.worksheet_id,
+        student_name=args.student_name,
+        student_iyatta=args.student_iyatta,
+        worksheet_date=args.worksheet_date,
+        worksheet_json_filename=args.worksheet_json_filename,
+        tags_folder_path=args.tags_folder_path,
+        output_path=f"{args.output_path}/{args.worksheet_id}.pdf",
+        base_dir=args.base_dir,
     )
 
 
