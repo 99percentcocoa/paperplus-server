@@ -11,6 +11,8 @@ PDF_WRITE_PATH = SETTINGS.PDF_WRITE_PATH
 WORKSHEET_JSON_PATH = SETTINGS.WORKSHEET_JSON_PATH
 HTML_BASE_DIR = SETTINGS.HTML_BASE_DIR
 
+# python3 worksheet_pdf_generator.py --worksheet-id 1 --student-name "John Doe" --student-iyatta 5 --worksheet-date 2023-01-01 --worksheet-json-filename en_level_A.json
+
 def generate_worksheet_pdf(
     worksheet_id: int,
     student_name: str,
@@ -75,8 +77,8 @@ def generate_worksheet_pdf(
 
     # generate questions HTML and tags HTML
     questions_html = generate_questions_html(questions, str(effective_tags_folder_path))
-    # tags_html = generate_tags_html(getTagNumbers(worksheet_id), str(effective_tags_folder_path))
-    tags_html = generate_cctag_html([0,1,2,3], str(effective_tags_folder_path))
+    tags_html = generate_tags_html(getTagNumbers(worksheet_id), str(effective_tags_folder_path))
+    # tags_html = generate_cctag_html([0,1,2,3], str(effective_tags_folder_path))
 
     # fill template placeholders
     final_html = (
