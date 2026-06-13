@@ -36,6 +36,20 @@ def generate_tags_html(tag_ids, tags_folder_path=TAGS_PATH):
 
     return tags_html
 
+# corner tags using cctag
+def generate_cctag_html(tag_ids=[0,1,2,3],tags_folder_path=TAGS_PATH):
+    tag_urls = [f"{tags_folder_path}/cctags/{str(id).zfill(4)}.svg" for id in tag_ids]
+    print(f"tag urls: {tag_urls}")
+    tags_html = ""
+
+    print(f"Adding tags {tag_urls}")
+    tags_html += f'<div class="marker top-left"><img src="{tag_urls[0]}" style="width:100%;height:100%;" /></div>\n'
+    tags_html += f'<div class="marker top-right"><img src="{tag_urls[1]}" style="width:100%;height:100%;" /></div>\n'
+    tags_html += f'<div class="marker bottom-left"><img src="{tag_urls[2]}" style="width:100%;height:100%;" /></div>\n'
+    tags_html += f'<div class="marker bottom-right"><img src="{tag_urls[3]}" style="width:100%;height:100%;" /></div>\n'
+
+    return tags_html
+
 def generate_question_box(question, q_no):
     option_html = ""
 
