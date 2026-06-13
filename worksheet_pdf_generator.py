@@ -2,7 +2,7 @@ import json
 import argparse
 from pathlib import Path
 from typing import Optional
-from services.pdf_generator_service import generate_tags_html, generate_questions_html, getTagNumbers
+from services.pdf_generator_service import generate_tags_html, generate_cctag_html, generate_questions_html, getTagNumbers
 from config import SETTINGS
 
 TAGS_PATH = SETTINGS.TAGS_PATH
@@ -75,7 +75,8 @@ def generate_worksheet_pdf(
 
     # generate questions HTML and tags HTML
     questions_html = generate_questions_html(questions, str(effective_tags_folder_path))
-    tags_html = generate_tags_html(getTagNumbers(worksheet_id), str(effective_tags_folder_path))
+    # tags_html = generate_tags_html(getTagNumbers(worksheet_id), str(effective_tags_folder_path))
+    tags_html = generate_cctag_html([0,1,2,3], str(effective_tags_folder_path))
 
     # fill template placeholders
     final_html = (
