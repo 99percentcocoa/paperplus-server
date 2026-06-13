@@ -5,7 +5,7 @@
 
 @page {
   size: A4;
-  margin: 1mm;
+  margin: 2mm;
   border: 5px solid black;
 }
 
@@ -101,6 +101,11 @@ h2 {
   background-position: center;
   background-repeat: no-repeat;
   background-size: contain;
+}
+
+header .marker {
+  width: 12mm;
+  height: 12mm;
 }
 
 /* Positions */
