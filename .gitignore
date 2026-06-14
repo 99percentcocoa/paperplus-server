@@ -20,6 +20,7 @@ paperplus.service
 *.log
 *.tmp
 paperplus.sql
+batch_generate_worksheets.py
 
 # System or editor files
 .DS_Store
