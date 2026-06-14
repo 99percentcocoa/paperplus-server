@@ -11,6 +11,7 @@ import logging
 from pathlib import Path
 import requests
 from typing import List
+import hashlib
 import cv2  # pylint: disable=no-member
 import numpy as np
 from tinydb import TinyDB
@@ -510,6 +511,45 @@ def sort_detections_clockwise(detections):
 
     return detections_sorted
 
+# encoding for row_ids
+def encode_worksheet_id_rows(n: int):
+    """Encode worksheet ID into three tag IDs for rows. Returns 5 tags (the first 5 row tags of the worksheet)"""
+    digits = []
+
+    for _ in range(5):
+        digits.append(n % 35)
+        n //= 35
+
+    digits.reverse()
+    return digits
+
+def checksum(ids):
+    """Calculate checksum for a list of 5 tag IDs."""
+    digest = hashlib.sha256(bytes(ids)).digest()
+    return [b % 35 for b in digest[:5]]
+
+def worksheet_id_to_rows(n: int):
+    data_tags = encode_worksheet_id_rows(n)
+    check = checksum(data_tags)
+    return data_tags + check
+
+def decode_row_tags(tags):
+    """Decode worksheet ID from 10 row tag IDs (5 data + 5 checksum). Returns None if checksum doesn't match."""
+    if len(tags) != 10:
+        raise ValueError("Expected 10 tags (5 data + 5 checksum)")
+    
+    data = tags[:5]
+    check = tags[5:]
+
+    if checksum(data) != check:
+        return None
+    
+    value = 0
+
+    for d in data:
+        value = value * 35 + d
+    
+    return value
 
 def encode_worksheet_id(n: int):
     """Return tag IDs for TR, BR, BL given worksheet_id n.

@@ -76,8 +76,11 @@ def generate_worksheet_pdf(
         template_html = f.read()
 
     # generate questions HTML and tags HTML
-    questions_html = generate_questions_html(questions, str(effective_tags_folder_path))
-    tags_html = generate_tags_html(getTagNumbers(worksheet_id), str(effective_tags_folder_path))
+    questions_html = generate_questions_html(worksheet_id, questions, str(effective_tags_folder_path))
+
+    # corner tags are fixed: 0, 1, 2, 3
+    tags_html = generate_tags_html([0, 1, 2, 3], str(effective_tags_folder_path))
+    # tags_html = generate_tags_html(getTagNumbers(worksheet_id), str(effective_tags_folder_path))
     # tags_html = generate_cctag_html([0,1,2,3], str(effective_tags_folder_path))
 
     # fill template placeholders

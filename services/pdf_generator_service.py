@@ -1,7 +1,7 @@
 from weasyprint import HTML, CSS
 import json
 from config import SETTINGS
-from services.image_service import encode_worksheet_id
+from services.image_service import encode_worksheet_id, worksheet_id_to_rows
 
 ORIENTATION_ID = SETTINGS.ORIENTATION_ID
 TAGS_PATH = SETTINGS.TAGS_PATH
@@ -65,8 +65,15 @@ def generate_question_box(question, q_no):
 
     return option_html
 
-def generate_questions_html(questions, tags_folder_path=TAGS_PATH):
+# now embed the ID in the question tags
+def generate_questions_html(worksheet_id, questions, tags_folder_path=TAGS_PATH):
+    row_tags = worksheet_id_to_rows(worksheet_id)
+    print(f"Row tags: {row_tags}")
     rows_html = ""
+
+    if len(questions) != 20:
+        raise ValueError("Expected exactly 20 questions, got {}".format(len(questions)))
+    
     for i in range(0, len(questions), 2):
         q1 = questions[i]
         q2 = questions[i+1] if i+1 < len(questions) else None
@@ -75,7 +82,8 @@ def generate_questions_html(questions, tags_folder_path=TAGS_PATH):
         rows_html += "<td class='row-marker'>\n"
 
         # tag url for 25h9
-        tag_url = f"{tags_folder_path}/25h9/tag25_09_{str((i // 2) + 1).zfill(5)}.svg"
+        row_num = i // 2
+        tag_url = f"{tags_folder_path}/25h9/tag25_09_{str(row_tags[row_num]).zfill(5)}.svg"
 
         # tag url for 36h11 tags number 10-20
         # tag_url = f"tags/36h11/tag36_11_{str((i // 2) + 10).zfill(5)}.svg"
