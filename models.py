@@ -91,10 +91,11 @@ class DetectionResult:
     detections: List[AprilTagDetection]
     tag_family: str = None
     tag_ids: List[int] = field(init=False)
-    sorted_detections: List[AprilTagDetection] = field(init=False)
+    sorted_corner_detections: List[AprilTagDetection] = field(init=False)
+    sorted_row_detections: List[AprilTagDetection] = field(init=False)
     
     def __post_init__(self):
-        """Extract tag IDs from detections and sort detections clockwise."""
+        """Extract tag IDs from detections and sort corner detections clockwise. """
         # Validate detections based on tag family
         num_detections = len(self.detections)
         
@@ -104,19 +105,20 @@ class DetectionResult:
             
             # Lazy import to avoid circular dependency
             from services.image_service import sort_detections_clockwise
-            self.sorted_detections = sort_detections_clockwise(self.detections)
+            self.sorted_corner_detections = sort_detections_clockwise(self.detections)
 
         elif self.tag_family == "25h9":
             required_detections = SETTINGS.NUM_ROW_TAGS
             if num_detections < required_detections:
                 raise ValueError(f"Tag family '25h9' requires at least {required_detections} detections, but got {num_detections}")
             
-            # Filter out detections with tag_id outside valid range [0, required_detections-1]
-            valid_detections = [d for d in self.detections if 0 <= d.tag_id <= required_detections]
+            # Filter out detections with tag_id outside valid range [0, 34] (base-35 encoding)
+            valid_detections = [d for d in self.detections if 0 <= d.tag_id <= 34]
             self.detections = valid_detections
             
             # Sort 25h9 detections from top to bottom by Y-coordinate
-            self.sorted_detections = sorted(self.detections, key=lambda d: d.center[1])
+            self.sorted_row_detections = sorted(self.detections, key=lambda d: d.center[1])
+            self.detections = self.sorted_row_detections
         
         # save tag_ids as list of int
         self.tag_ids = [detection.tag_id for detection in self.detections]

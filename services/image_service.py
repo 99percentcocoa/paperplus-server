@@ -56,8 +56,8 @@ at_detector_25h9 = Detector(
 )
 
 # Tag configuration
-BASE = 586
-ORIENTATION_ID = 586
+# BASE = 586
+ORIENTATION_ID = 0
 db = TinyDB('worksheets.json')
 
 def detect_apriltags(input_image: InputImageMeta, tag_family: str) -> DetectionResult:
@@ -155,9 +155,11 @@ def scan_image(input_image: InputImageMeta) -> WorksheetTemplate:
     """
 
     corner_detection_result = detect_apriltags(input_image, "36h11")
-    cropped_image, worksheet_id = crop_image(input_image, corner_detection_result)
+    cropped_image = crop_image(input_image, corner_detection_result)
     row_detection_result = detect_apriltags(cropped_image, "25h9")
     preprocessed_image = clean_document(cropped_image)
+
+    worksheet_id = decode_row_tags([tag.tag_id for tag in row_detection_result.detections])
 
     debug_image = cropped_image
 
@@ -237,21 +239,13 @@ def crop_image(input_image: InputImageMeta, detections: DetectionResult) -> tupl
     """
     if input_image.image_array is None:
         raise ValueError("Input image is empty; cannot crop.")
-
-    # if len(detections.detections) < 4:
-    #     raise ValueError("At least 4 AprilTags are required to crop the image.")
-
-    # # Use sorted detections: top-left, top-right, bottom-right, bottom-left
-    # ordered = detections.sorted_detections
-    # if len(ordered) < 4:
-    #     raise ValueError("Sorted detections did not yield 4 corners.")
     
-    worksheet_id, detections.sorted_detections = detect_orientation_and_decode(detections)
+    # worksheet_id, detections.sorted_corner_detections = detect_orientation_and_decode(detections)
+    detections.sorted_corner_detections = detect_orientation_and_decode(detections)
 
-    # validation and orientation
 
     # Build source points (x, y) in float32 shape (4,2)
-    src_pts = np.array([detections.sorted_detections[i].center for i in range(4)], dtype=np.float32)
+    src_pts = np.array([detections.sorted_corner_detections[i].center for i in range(4)], dtype=np.float32)
     dst_pts = np.array([[0, 0], [TARGET_WIDTH, 0], [TARGET_WIDTH, TARGET_HEIGHT], [0, TARGET_HEIGHT]], dtype="float32")
 
     # Compute perspective transform matrix
@@ -260,7 +254,7 @@ def crop_image(input_image: InputImageMeta, detections: DetectionResult) -> tupl
     # Perform the warp perspective to get the cropped image
     warped_image = cv2.warpPerspective(input_image.image_array, t_matrix, (TARGET_WIDTH, TARGET_HEIGHT))
 
-    return InputImageMeta(image_array=warped_image), worksheet_id
+    return InputImageMeta(image_array=warped_image)
 
 # get cropped ROI images from worksheet
 def get_roi_coordinates(row_detections: DetectionResult) -> list[ROI]:
@@ -274,7 +268,7 @@ def get_roi_coordinates(row_detections: DetectionResult) -> list[ROI]:
     """
     roi_coordinates = []
 
-    # row_detections = worksheet_meta.row_detections.sorted_detections
+    # row_detections = worksheet_meta.row_detections.sorted_corner_detections
     logger.debug("Row detections for ROI cropping: %s", [d.tag_id for d in row_detections.detections])
 
     for i, detection in enumerate(row_detections.detections):
@@ -551,39 +545,39 @@ def decode_row_tags(tags):
     
     return value
 
-def encode_worksheet_id(n: int):
-    """Return tag IDs for TR, BR, BL given worksheet_id n.
+# def encode_worksheet_id(n: int):
+#     """Return tag IDs for TR, BR, BL given worksheet_id n.
 
-    Args:
-        n (int): Worksheet ID
+#     Args:
+#         n (int): Worksheet ID
 
-    Returns:
-        list: [TR, BR, BL] tag IDs
+#     Returns:
+#         list: [TR, BR, BL] tag IDs
 
-    Raises:
-        ValueError: If worksheet_id is too large
-    """
-    if n >= BASE ** 3:
-        raise ValueError(f"Max worksheet_id is {BASE**3 - 1}")
-    ids = []
-    for _ in range(3):
-        ids.append(n % BASE)
-        n //= BASE
-    return ids  # [TR, BR, BL]
+#     Raises:
+#         ValueError: If worksheet_id is too large
+#     """
+#     if n >= BASE ** 3:
+#         raise ValueError(f"Max worksheet_id is {BASE**3 - 1}")
+#     ids = []
+#     for _ in range(3):
+#         ids.append(n % BASE)
+#         n //= BASE
+#     return ids  # [TR, BR, BL]
 
 
-def decode_from_tags(tr: int, br: int, bl: int):
-    """Return worksheet_id from three tag IDs.
+# def decode_from_tags(tr: int, br: int, bl: int):
+#     """Return worksheet_id from three tag IDs.
 
-    Args:
-        tr (int): Top-right tag ID
-        br (int): Bottom-right tag ID
-        bl (int): Bottom-left tag ID
+#     Args:
+#         tr (int): Top-right tag ID
+#         br (int): Bottom-right tag ID
+#         bl (int): Bottom-left tag ID
 
-    Returns:
-        int: Worksheet ID
-    """
-    return tr + br * BASE + bl * (BASE ** 2)
+#     Returns:
+#         int: Worksheet ID
+#     """
+#     return tr + br * BASE + bl * (BASE ** 2)
 
 
 def rotate(lst, n):
@@ -608,31 +602,42 @@ def detect_orientation_and_decode(detection: DetectionResult):
     Returns:
         tuple: (worksheet_id, rotated_detections) or (None, None) if not found
     """
-    num_rotations = 0
 
+    num_rotations = 0
     for rot in range(4):
-        # rot starts with 0
-        rotated = rotate(detection.sorted_detections, rot)
+        rotated = rotate(detection.sorted_corner_detections, rot)
         tag_ids = [d.tag_id for d in rotated]
         num_rotations += 1
-        print(f"At rotation {num_rotations}")
+        logger.debug(f"At rotation {num_rotations}, tag IDs: {tag_ids}")
         if tag_ids[0] == ORIENTATION_ID:        # TL found
+            return rotated
+        else:
+            logger.debug(f"Orientation ID {ORIENTATION_ID} not found at rotation {num_rotations}.")
 
-            worksheet_id = decode_from_tags(tag_ids[1], tag_ids[2], tag_ids[3])
-            print(f"Scanned worksheet ID: {worksheet_id}")
-            # return (worksheet_id, rotated)
+    # num_rotations = 0
+    # for rot in range(4):
+    #     # rot starts with 0
+    #     rotated = rotate(detection.sorted_corner_detections, rot)
+    #     tag_ids = [d.tag_id for d in rotated]
+    #     num_rotations += 1
+    #     print(f"At rotation {num_rotations}")
+    #     if tag_ids[0] == ORIENTATION_ID:        # TL found
 
-            # check if worksheet id is in database
-            if db.contains(doc_id=worksheet_id):
-                print(
-                    f"Found worksheet id {worksheet_id}: "
-                    f"{db.get(doc_id=worksheet_id).get('name', '')}"
-                )
-                detection.sorted_detections = rotated
-                return (worksheet_id, rotated)
-            else:
-                print(f"Worksheet ID {worksheet_id} not found in database.")
-                return None
+    #         worksheet_id = decode_from_tags(tag_ids[1], tag_ids[2], tag_ids[3])
+    #         print(f"Scanned worksheet ID: {worksheet_id}")
+    #         # return (worksheet_id, rotated)
+
+    #         # check if worksheet id is in database
+    #         if db.contains(doc_id=worksheet_id):
+    #             print(
+    #                 f"Found worksheet id {worksheet_id}: "
+    #                 f"{db.get(doc_id=worksheet_id).get('name', '')}"
+    #             )
+    #             detection.sorted_corner_detections = rotated
+    #             return (worksheet_id, rotated)
+    #         else:
+    #             print(f"Worksheet ID {worksheet_id} not found in database.")
+    #             return None
     return None  # some error
 
 def save_preprocessed(worksheet_meta: WorksheetTemplate) -> None:
