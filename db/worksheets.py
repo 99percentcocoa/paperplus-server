@@ -5,21 +5,43 @@ import json
 from .connection import get_connection
 
 
-def create_worksheet(worksheet_json: dict, is_test: bool = False) -> int:
-    """Insert a new worksheet row and return the generated worksheet_id."""
+def create_worksheet(worksheet_json: dict, is_test: bool = False, worksheet_id: int = None) -> int:
+    """Insert a new worksheet row and return the worksheet_id.
+
+    If *worksheet_id* is supplied the row is inserted with that exact ID and
+    the serial sequence is advanced to MAX(worksheet_id) so subsequent
+    auto-generated IDs never collide with it.
+    """
     lang = worksheet_json.get("language")
     level = worksheet_json.get("level")
     title = worksheet_json.get("title")
     max_score = len(worksheet_json.get("questions", []))
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                """INSERT INTO worksheets (worksheet_level, is_test, max_score, lang, title, worksheet_json)
-                   VALUES (%s, %s, %s, %s, %s, %s)
-                   RETURNING worksheet_id""",
-                (level, is_test, max_score, lang, title, json.dumps(worksheet_json)),
-            )
-            return cur.fetchone()["worksheet_id"]
+            if worksheet_id is not None:
+                cur.execute(
+                    """INSERT INTO worksheets (worksheet_id, worksheet_level, is_test, max_score, lang, title, worksheet_json)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s)
+                       RETURNING worksheet_id""",
+                    (worksheet_id, level, is_test, max_score, lang, title, json.dumps(worksheet_json)),
+                )
+                inserted_id = cur.fetchone()["worksheet_id"]
+                # Keep the sequence in sync so future auto-IDs don't collide.
+                cur.execute(
+                    """SELECT setval(
+                           pg_get_serial_sequence('worksheets', 'worksheet_id'),
+                           (SELECT MAX(worksheet_id) FROM worksheets)
+                       )"""
+                )
+                return inserted_id
+            else:
+                cur.execute(
+                    """INSERT INTO worksheets (worksheet_level, is_test, max_score, lang, title, worksheet_json)
+                       VALUES (%s, %s, %s, %s, %s, %s)
+                       RETURNING worksheet_id""",
+                    (level, is_test, max_score, lang, title, json.dumps(worksheet_json)),
+                )
+                return cur.fetchone()["worksheet_id"]
 
 
 def check_test(worksheet_id: int) -> bool:

@@ -19,7 +19,8 @@ from .mastery import recalculate_skill_mastery
 
 
 def add_worksheet_to_db(worksheet_json: dict | list,
-                        is_test: bool = False) -> dict:
+                        is_test: bool = False,
+                        worksheet_id: int = None) -> dict:
     """
     Full flow: "add a new worksheet to the database"
 
@@ -30,7 +31,7 @@ def add_worksheet_to_db(worksheet_json: dict | list,
     """
     questions = worksheet_json if isinstance(worksheet_json, list) else worksheet_json.get("questions", [])
 
-    worksheet_id = create_worksheet(worksheet_json, is_test=is_test)
+    worksheet_id = create_worksheet(worksheet_json, is_test=is_test, worksheet_id=worksheet_id)
     question_ids = insert_questions_for_worksheet(worksheet_id, questions)
 
     # Update the stored JSON with worksheet_id and question_ids
