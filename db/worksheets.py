@@ -20,10 +20,10 @@ def create_worksheet(worksheet_json: dict, is_test: bool = False, worksheet_id: 
         with conn.cursor() as cur:
             if worksheet_id is not None:
                 cur.execute(
-                    """INSERT INTO worksheets (worksheet_id, worksheet_level, is_test, max_score, lang, title, worksheet_json)
-                       VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """INSERT INTO worksheets (worksheet_id, worksheet_level, is_test, max_score, lang, worksheet_json)
+                       VALUES (%s, %s, %s, %s, %s, %s)
                        RETURNING worksheet_id""",
-                    (worksheet_id, level, is_test, max_score, lang, title, json.dumps(worksheet_json)),
+                    (worksheet_id, level, is_test, max_score, lang, json.dumps(worksheet_json)),
                 )
                 inserted_id = cur.fetchone()["worksheet_id"]
                 # Keep the sequence in sync so future auto-IDs don't collide.
@@ -36,10 +36,10 @@ def create_worksheet(worksheet_json: dict, is_test: bool = False, worksheet_id: 
                 return inserted_id
             else:
                 cur.execute(
-                    """INSERT INTO worksheets (worksheet_level, is_test, max_score, lang, title, worksheet_json)
-                       VALUES (%s, %s, %s, %s, %s, %s)
+                    """INSERT INTO worksheets (worksheet_level, is_test, max_score, lang, worksheet_json)
+                       VALUES (%s, %s, %s, %s, %s)
                        RETURNING worksheet_id""",
-                    (level, is_test, max_score, lang, title, json.dumps(worksheet_json)),
+                    (level, is_test, max_score, lang, json.dumps(worksheet_json)),
                 )
                 return cur.fetchone()["worksheet_id"]
 
