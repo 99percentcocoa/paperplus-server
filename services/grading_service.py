@@ -122,7 +122,7 @@ def check_worksheet(worksheet_meta: WorksheetTemplate, use_classifier: bool, deb
         logger.debug("Processing ROI %s", q_no)
 
         if use_classifier:
-            roi_image_array = worksheet_meta.cropped_image.image_array[
+            roi_image_array = worksheet_meta.blurred_image.image_array[
                 y1:y2, 
                 x1:x2
             ]
