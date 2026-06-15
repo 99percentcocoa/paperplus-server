@@ -172,6 +172,7 @@ class WorksheetTemplate:
     """Metadata for a worksheet template."""
     input_image: InputImageMeta
     cropped_image: Optional[InputImageMeta] = None
+    blurred_image: Optional[InputImageMeta] = None
     preprocessed_image: Optional[InputImageMeta] = None
     corner_detections: Optional[DetectionResult] = None
     row_detections: Optional[DetectionResult] = None

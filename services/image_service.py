@@ -140,6 +140,18 @@ def download_image(url, session_id, sender_number):
 
     return corner_tags, len(corner_tags) == 4
 
+def apply_median_blur(input_image: InputImageMeta, kernel_size: int = 31) -> InputImageMeta:
+    """Apply median blur to the input image.
+
+    Args:
+        input_image (InputImageMeta): Metadata of the input image
+        kernel_size (int): Size of the median filter kernel
+
+    Returns:
+        InputImageMeta: Metadata of the blurred image
+    """
+    blurred_image = cv2.medianBlur(input_image.image_array, kernel_size)
+    return InputImageMeta(image_array=blurred_image)
 
 def scan_image(input_image: InputImageMeta) -> WorksheetTemplate:
     """Process image: dewarp, clean, and prepare for OMR.
@@ -156,6 +168,7 @@ def scan_image(input_image: InputImageMeta) -> WorksheetTemplate:
 
     corner_detection_result = detect_apriltags(input_image, "36h11")
     cropped_image = crop_image(input_image, corner_detection_result)
+    blurred_image = apply_median_blur(cropped_image)
     row_detection_result = detect_apriltags(cropped_image, "25h9")
     preprocessed_image = clean_document(cropped_image)
 
@@ -169,6 +182,7 @@ def scan_image(input_image: InputImageMeta) -> WorksheetTemplate:
     worksheet_template = WorksheetTemplate(
         input_image=input_image,
         cropped_image=cropped_image,
+        blurred_image=blurred_image,
         preprocessed_image=preprocessed_image,
         corner_detections=corner_detection_result,
         row_detections=row_detection_result,
