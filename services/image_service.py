@@ -83,7 +83,17 @@ def detect_apriltags(input_image: InputImageMeta, tag_family: str) -> DetectionR
     else:
         raise ValueError(f"Unsupported tag family: {tag_family}")
 
-    detections = detector.detect(gray_image_array)
+    h, w = input_image.image_array.shape[:2]
+    fov = 60  # degrees, typical for smartphone cameras
+    focal_length = (w / 2) / np.tan(np.radians(fov / 2))
+    cx = w / 2
+    cy = h / 2
+    detections = detector.detect(
+        gray_image_array,
+        estimate_tag_pose=True,
+        camera_params=[focal_length, focal_length, cx, cy],
+        tag_size=0.01
+    )
 
     return DetectionResult(
         input_image=input_image,
@@ -212,9 +222,17 @@ def detect_tags_36h11(image_input):
         img = image_input
     else:
         raise ValueError("image_input must be a file path (str) or numpy array")
+    
+    # estimate camera params (fx, fy, cx, cy) based on image size and typical smartphone camera FOV
+    h, w = img.shape[:2]
+    fov = 60  # degrees, typical for smartphone cameras
+    focal_length = (w / 2) / np.tan(np.radians(fov / 2))
+    cx = w / 2
+    cy = h / 2
+    fx = fy = focal_length
 
     gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    detection = at_detector_36h11.detect(gray_img)
+    detection = at_detector_36h11.detect(img=gray_img, estimate_tag_pose=True, camera_params=[fx, fy, cx, cy], tag_size=0.01)
     return detection
 
 def detect_tags_25h9(image_input):
