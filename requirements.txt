@@ -11,3 +11,4 @@ requests
 tinydb
 psycopg[binary]
 weasyprint
+scipy
