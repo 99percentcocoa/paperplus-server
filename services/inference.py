@@ -7,6 +7,7 @@ import numpy as np
 import cv2
 from ai_edge_litert.interpreter import Interpreter
 from PIL import Image
+from paddleocr import PaddleOCR
 
 interpreter = None
 input_details = None
@@ -108,3 +109,52 @@ def predict_bubble(input_bubble: InputImageMeta):
         confidence = probability * 100
 
     return probability.item(), result, confidence, probability
+
+# -- OCR --
+
+def init_ocr():
+    global ocr
+    ocr = PaddleOCR(
+        text_detection_model_name="PP-OCRv6_small_det",
+        text_recognition_model_name="PP-OCRv5_mobile_rec",
+        use_doc_orientation_classify=False,
+        use_doc_unwarping=False,
+        use_textline_orientation=False
+    )
+
+def predict_ocr(input_image: InputImageMeta):
+    """
+    Perform OCR on the input image using PaddleOCR.
+
+    Args:
+        input_image (InputImageMeta): The input image metadata for OCR.
+    
+    Returns:
+        str: The recognized text.
+    """
+
+    if 'ocr' not in globals():
+        init_ocr()
+
+    img = input_image.image_array
+    if img is None:
+        raise ValueError("Input image is empty; cannot perform OCR.")
+    
+    # Convert to RGB if needed
+    if len(img.shape) == 3 and img.shape[2] == 3:
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+    # Perform OCR
+    result = ocr.predict(img)
+    res = result[0]
+    rec_texts = res.get("rec_texts", [])
+    rec_scores = res.get("rec_scores", [])
+
+    # get the rec_text corresponding to the highest rec_score
+    if rec_texts and rec_scores:
+        max_score_index = np.argmax(rec_scores)
+        best_text = rec_texts[max_score_index]
+        best_score = rec_scores[max_score_index]
+        return best_text
+
+    return []

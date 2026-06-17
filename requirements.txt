@@ -12,3 +12,4 @@ tinydb
 psycopg[binary]
 weasyprint
 scipy
+paddleocr
