@@ -11,7 +11,7 @@ PDF_WRITE_PATH = SETTINGS.PDF_WRITE_PATH
 WORKSHEET_JSON_PATH = SETTINGS.WORKSHEET_JSON_PATH
 HTML_BASE_DIR = SETTINGS.HTML_BASE_DIR
 
-# python3 worksheet_pdf_generator.py --worksheet-id 1 --student-name "John Doe" --student-iyatta 5 --worksheet-date 2023-01-01 --worksheet-json-filename en_level_A.json
+# python3 worksheet_pdf_generator.py --worksheet-id 1 --worksheet-json-filename en_level_A.json
 
 def generate_worksheet_pdf(
     worksheet_id: int,
