@@ -1,7 +1,7 @@
 from weasyprint import HTML, CSS
 import json
 from config import SETTINGS
-from services.image_service import encode_worksheet_id, worksheet_id_to_rows
+from services.image_service import worksheet_id_to_rows
 
 ORIENTATION_ID = SETTINGS.ORIENTATION_ID
 TAGS_PATH = SETTINGS.TAGS_PATH
@@ -16,11 +16,11 @@ def open_worksheet(filename):
     return questions
 
 # from a worksheet ID (check database), get the tags to be inserted
-def getTagNumbers(id):
-    idTags = encode_worksheet_id(id)
-    idTags.insert(0, ORIENTATION_ID)
+# def getTagNumbers(id):
+#     idTags = encode_worksheet_id(id)
+#     idTags.insert(0, ORIENTATION_ID)
 
-    return idTags
+#     return idTags
 
 # only for corner tags (36h11)
 def generate_tags_html(tag_ids, tags_folder_path=TAGS_PATH):
@@ -78,21 +78,25 @@ def generate_questions_html(worksheet_id, questions, tags_folder_path=TAGS_PATH)
         q1 = questions[i]
         q2 = questions[i+1] if i+1 < len(questions) else None
         rows_html += "<tr>\n"
-        # add one marker per row
-        rows_html += "<td class='row-marker'>\n"
-
-        # tag url for 25h9
         row_num = i // 2
+        # add two markers per row
+
+        rows_html += "<td class='row-marker'>\n"
         tag_url = f"{tags_folder_path}/25h9/tag25_09_{str(row_tags[row_num]).zfill(5)}.svg"
-
-        # tag url for 36h11 tags number 10-20
-        # tag_url = f"tags/36h11/tag36_11_{str((i // 2) + 10).zfill(5)}.svg"
-
         print(f"Adding {tag_url}")
         rows_html += f"<div class='marker' style='background-image: url({tag_url})'></div>\n"
         rows_html += "</td>\n"
+
         rows_html += f"{generate_question_box(q1, i+1)}\n"
         rows_html += f"{generate_question_box(q2, i+2) if q2 else ''}\n"
+
+        #second marker
+        rows_html += "<td class='row-marker'>\n"
+        tag_url = f"{tags_folder_path}/25h9/tag25_09_{str(row_tags[row_num]).zfill(5)}.svg"
+        print(f"Adding {tag_url}")
+        rows_html += f"<div class='marker' style='background-image: url({tag_url})'></div>\n"
+        rows_html += "</td>\n"
+
         rows_html += "</tr>\n"
     
     return rows_html

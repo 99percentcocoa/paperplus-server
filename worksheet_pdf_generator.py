@@ -2,7 +2,7 @@ import json
 import argparse
 from pathlib import Path
 from typing import Optional
-from services.pdf_generator_service import generate_tags_html, generate_cctag_html, generate_questions_html, getTagNumbers
+from services.pdf_generator_service import generate_tags_html, generate_questions_html
 from config import SETTINGS
 
 TAGS_PATH = SETTINGS.TAGS_PATH
