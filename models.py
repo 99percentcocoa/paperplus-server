@@ -184,6 +184,7 @@ class WorksheetTemplate:
     marked_answers: Optional[List[str]] = None
     answer_key: Optional[List[str]] = None
     score: Optional[List[int]] = None
+    roll_number: Optional[str] = None
 
 @dataclass
 class ROI:

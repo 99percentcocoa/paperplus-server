@@ -19,6 +19,7 @@ from pupil_apriltags import Detector
 from PIL import Image, ImageDraw, ImageFont
 from config import SETTINGS
 from models import DetectionResult, InputImageMeta, WorksheetTemplate, ROI
+from services.inference import predict_ocr
 
 logger = logging.getLogger(__name__)
 
@@ -184,6 +185,12 @@ def scan_image(input_image: InputImageMeta) -> WorksheetTemplate:
 
     worksheet_id = decode_row_tags([tag.tag_id for tag in row_detection_result.detections])
 
+    # get roll number by applying ocr inference. crop the roll number box using the defined ROI and run OCR on it
+    x1, y1, x2, y2 = SETTINGS.ROLL_NUMBER_ROI
+    roll_number_roi = cropped_image.image_array[y1:y2, x1:x2]
+    roll_number_roi_meta = InputImageMeta(image_array=roll_number_roi)
+    roll_number = predict_ocr(roll_number_roi_meta)
+
     debug_image = cropped_image
 
     checked_image = Image.fromarray(cv2.cvtColor(cropped_image.image_array, cv2.COLOR_BGR2RGB))  # pylint: disable=no-member
@@ -198,7 +205,8 @@ def scan_image(input_image: InputImageMeta) -> WorksheetTemplate:
         row_detections=row_detection_result,
         worksheet_id=worksheet_id,
         debug_image=debug_image,
-        checked_image=checked_image
+        checked_image=checked_image,
+        roll_number=roll_number
     )
 
     return worksheet_template
@@ -700,6 +708,13 @@ def save_debug(worksheet_meta: WorksheetTemplate) -> None:
     debug_filename = f"{Path(original_path).stem}_debug.jpg"
     debug_filepath = Path(SETTINGS.DEBUG_PATH) / debug_filename
     debug_url = f"http://{SERVER_IP}:3000/debug/{debug_filename}"
+
+    # Draw roll number ROI on the debug image
+    x1, y1, x2, y2 = SETTINGS.ROLL_NUMBER_ROI
+    debug_arr = worksheet_meta.debug_image.image_array.copy()
+    cv2.rectangle(debug_arr, (x1, y1), (x2, y2), (0, 255, 0), 3)
+    worksheet_meta.debug_image = InputImageMeta(image_array=debug_arr)
+
     worksheet_meta.debug_image.save(debug_filepath)
     worksheet_meta.debug_image.image_url = debug_url
     logger.debug("Saved debug image to %s", debug_filepath)

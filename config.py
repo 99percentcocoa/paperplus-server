@@ -36,6 +36,8 @@ class Config:
     LEFT_QUESTION_ROI = (85, -40, 485, 90)
     RIGHT_QUESTION_ROI = (620, -40, 485, 90)
 
+    ROLL_NUMBER_ROI = (420, 1660, 850, 1754) # x1, y1, x2, y2
+
     MIN_MARK_AREA = 600
     MAX_MARK_AREA = 950
     FILL_THRESHOLD = 0.6

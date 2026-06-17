@@ -7,7 +7,6 @@ import numpy as np
 import cv2
 from ai_edge_litert.interpreter import Interpreter
 from PIL import Image
-from paddleocr import PaddleOCR
 
 interpreter = None
 input_details = None
@@ -114,6 +113,7 @@ def predict_bubble(input_bubble: InputImageMeta):
 
 def init_ocr():
     global ocr
+    from paddleocr import PaddleOCR
     ocr = PaddleOCR(
         text_detection_model_name="PP-OCRv6_small_det",
         text_recognition_model_name="PP-OCRv5_mobile_rec",
