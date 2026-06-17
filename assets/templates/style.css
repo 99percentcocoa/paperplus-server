@@ -62,7 +62,7 @@ h2 {
   text-align: center;
   border: 1px solid rgb(74, 68, 68);
   width: 80%;
-  margin: 15px auto;
+  margin: 5px auto;
   margin-bottom: 0px;
 }
 
@@ -135,7 +135,7 @@ header .marker {
   border: 2px solid black;
   height: 10mm;
   width: 30mm;
-  bottom: 10px;
+  bottom: 10mm;
   left: 50%;
   transform: translateX(-50%);
   /* left: 15mm; */
@@ -144,7 +144,6 @@ header .marker {
 /* instructions container div */
 #instructions {
   margin-top: 3mm;
-  margin-bottom: 2mm;
   width: 95%;
   margin-left: auto;
   margin-right: auto;
@@ -202,7 +201,7 @@ header .marker {
   border-spacing: 5px 10px; /* note: the vertical spacing applies to the first element also */
   table-layout: fixed;
   margin: 0px auto;
-  padding-bottom: 10px;
+  padding-bottom: 5px;
   border-bottom: 2px solid black;
   /* margin-top: 0px;
   margin-left: 6mm; */
@@ -224,6 +223,7 @@ header .marker {
 which we don't want for row markers */
 .row-marker .marker {
   position: relative;
+  /* margin: 0 auto; - remove this comment to center the marker horizontally - but then change the ROIs */
 }
 
 /* Question box styling */

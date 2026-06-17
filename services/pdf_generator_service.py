@@ -91,11 +91,11 @@ def generate_questions_html(worksheet_id, questions, tags_folder_path=TAGS_PATH)
         rows_html += f"{generate_question_box(q2, i+2) if q2 else ''}\n"
 
         #second marker
-        rows_html += "<td class='row-marker'>\n"
-        tag_url = f"{tags_folder_path}/25h9/tag25_09_{str(row_tags[row_num]).zfill(5)}.svg"
-        print(f"Adding {tag_url}")
-        rows_html += f"<div class='marker' style='background-image: url({tag_url})'></div>\n"
-        rows_html += "</td>\n"
+        # rows_html += "<td class='row-marker'>\n"
+        # tag_url = f"{tags_folder_path}/25h9/tag25_09_{str(row_tags[row_num]).zfill(5)}.svg"
+        # print(f"Adding {tag_url}")
+        # rows_html += f"<div class='marker' style='background-image: url({tag_url})'></div>\n"
+        # rows_html += "</td>\n"
 
         rows_html += "</tr>\n"
     
