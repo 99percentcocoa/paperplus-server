@@ -15,9 +15,6 @@ HTML_BASE_DIR = SETTINGS.HTML_BASE_DIR
 
 def generate_worksheet_pdf(
     worksheet_id: int,
-    student_name: str,
-    student_iyatta: str,
-    worksheet_date: str,
     worksheet_json_filename: str,
     tags_folder_path: Optional[str] = None,
     output_path: Optional[str] = PDF_WRITE_PATH,
@@ -28,9 +25,6 @@ def generate_worksheet_pdf(
 
     Args:
       worksheet_id: numeric id used by the tag functions.
-      student_name: name to render on the worksheet header.
-      student_iyatta: class/grade to render on the header.
-      worksheet_date: date string to render on the header.
       worksheet_json_filename: name of the worksheet json file within WORKSHEET_JSON_PATH.
     tags_folder_path: optional override for tags folder path.
       output_path: if provided, the PDF will be written to this path or directory (default: PDF_WRITE_PATH).
@@ -89,9 +83,6 @@ def generate_worksheet_pdf(
         .replace("{{tags_html}}", tags_html)
         .replace("{{questions}}", questions_html)
         .replace("{{worksheet_id}}", str(worksheet_id))
-        .replace("{{student_name}}", student_name)
-        .replace("{{student_iyatta}}", student_iyatta)
-        .replace("{{worksheet_date}}", worksheet_date)
     )
 
     # create PDF
