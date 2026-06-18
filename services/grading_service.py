@@ -199,6 +199,16 @@ def check_worksheet(worksheet_meta: WorksheetTemplate, use_classifier: bool, deb
             # draw rectangle around ROI in checked image and write ✔ near top-right
             pil_draw.rectangle([(x1, y1), (x2, y2)], fill=None, outline=(0, 127, 0))
             pil_draw.text((x1 + roi_coordinate.width() - 5, y1 - 5), "✔", fill=(0, 127, 0), font=font)
+        elif ans == '':
+            score.append(0)
+            logger.debug("Question %s unanswered or multiple bubbles detected.", q_no)
+
+            # draw rectangle around ROI in debug image
+            cv2.rectangle(debug_image_array, (x1, y1), (x2, y2), (255, 86, 86), 2)
+
+            # draw rectangle around ROI in checked image and write ? near top-right
+            pil_draw.rectangle([(x1, y1), (x2, y2)], fill=None, outline=(255, 86, 86))
+            pil_draw.text((x1 + roi_coordinate.width() - 5, y1 - 5), "?", fill=(255, 86, 86), font=font)
         else:
             score.append(0)
             logger.debug("Question %s incorrect.", q_no)
