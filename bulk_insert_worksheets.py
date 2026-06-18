@@ -44,7 +44,7 @@ sys.path.insert(0, str(REPO_ROOT))
 from db.flows import add_worksheet_to_db
 from db.worksheets import get_worksheet
 
-MAPPING_CSV = REPO_ROOT / "files" / "csv" / "worksheet_id_mapping.csv"
+MAPPING_CSV = REPO_ROOT / "files" / "csv" / "student_exp.csv"
 JSON_DIR    = REPO_ROOT / "files" / "json"
 
 
