@@ -66,4 +66,6 @@ class Config:
     # Database
     DATABASE_URL = os.getenv('DATABASE_URL')
 
+    HOWTO_IMAGE_URL = os.getenv('HOWTO_IMAGE_URL')
+
 SETTINGS = Config()
