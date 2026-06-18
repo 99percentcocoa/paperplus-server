@@ -53,12 +53,13 @@ def send_message(to_number, message):
     logger.info(response.content)
 
 
-def send_image(to_number, img_url):
+def send_image(to_number, img_url, caption):
     """Send an image to a WhatsApp number.
 
     Args:
         to_number (str): Recipient phone number
         img_url (str): URL of the image to send
+        caption (str): Caption for the image
     """
     logger.debug("Sending image %s to %s", img_url, to_number)
     payload = json.dumps({
@@ -71,7 +72,7 @@ def send_image(to_number, img_url):
                         "type": "image",
                         "image": {
                             "link": img_url,
-                            "caption": "Your answers."
+                            "caption": caption
                         }
                     }
                 }
