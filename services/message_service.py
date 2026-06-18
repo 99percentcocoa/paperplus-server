@@ -72,10 +72,15 @@ def handle_message(data, session_id):
                 except ValueError as e:
                     # Corner tags detection failed
                     logger.debug("Less/more than 4 corner tags found.")
-                    send_message(
+                    send_image(
                         from_no,
-                        "Please take a complete photo of the worksheet. ⟳ \n"
-                        "कृपया कार्यपत्रिका संपूर्ण दिसेल असा फोटो काढा. ⟳")
+                        SETTINGS.HOWTO_IMAGE_URL,
+                        "Please take a complete photo of the worksheet. ⟳ \n कृपया कार्यपत्रिका संपूर्ण दिसेल असा फोटो काढा. ⟳"
+                    )
+                    # send_message(
+                    #     from_no,
+                    #     "Please take a complete photo of the worksheet. ⟳ \n"
+                    #     "कृपया कार्यपत्रिका संपूर्ण दिसेल असा फोटो काढा. ⟳")
 
                 # Save preprocessed image to correct file path for later access
                 save_preprocessed(worksheet)
@@ -97,7 +102,7 @@ def handle_message(data, session_id):
                         f"तुमचे मार्क: {score}/{len(answers)}")
                     
                     logger.info("Sending checked image.")
-                    send_image(from_no, worksheet.checked_image_url)
+                    send_image(from_no, worksheet.checked_image_url, "")
 
                     logsheet_args = (from_no, file_url, worksheet.debug_image.image_url, worksheet.checked_image_url, json.dumps(answers), score, log_url, roll_number, worksheet_id)
                     logger.debug("Logging to Google Sheets: %s", logsheet_args)
