@@ -191,6 +191,8 @@ def scan_image(input_image: InputImageMeta) -> WorksheetTemplate:
     roll_number_roi_meta = InputImageMeta(image_array=roll_number_roi)
     roll_number = predict_ocr(roll_number_roi_meta)
 
+    logger.debug("Roll number detected: %s", roll_number)
+
     debug_image = cropped_image
 
     checked_image = Image.fromarray(cv2.cvtColor(cropped_image.image_array, cv2.COLOR_BGR2RGB))  # pylint: disable=no-member

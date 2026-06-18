@@ -84,6 +84,7 @@ def handle_message(data, session_id):
 
                 # Process OMR answers
                 answers, q_score, omr_success = check_worksheet(worksheet_meta=worksheet, use_classifier=True, debug=False)
+                roll_number, worksheet_id = worksheet.roll_number, worksheet.worksheet_id
                 score = sum(q_score) if q_score else 0
 
                 if omr_success:
@@ -98,7 +99,7 @@ def handle_message(data, session_id):
                     logger.info("Sending checked image.")
                     send_image(from_no, worksheet.checked_image_url)
 
-                    logsheet_args = (from_no, file_url, worksheet.debug_image.image_url, worksheet.checked_image_url, json.dumps(answers), score, log_url)
+                    logsheet_args = (from_no, file_url, worksheet.debug_image.image_url, worksheet.checked_image_url, json.dumps(answers), score, log_url, roll_number, worksheet_id)
                     logger.debug("Logging to Google Sheets: %s", logsheet_args)
                     threading.Thread(target=log_to_sheet, args=logsheet_args).start()
 
@@ -109,7 +110,7 @@ def handle_message(data, session_id):
 
                     # Log failed scan
                     logsheet_args = (from_no, file_url, "",
-                                     "", "failed", "", log_url)
+                                     "", "failed", "", log_url, "", "")
                     threading.Thread(target=log_to_sheet,
                                      args=logsheet_args).start()
             else:
