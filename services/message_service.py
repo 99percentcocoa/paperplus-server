@@ -77,6 +77,7 @@ def handle_message(data, session_id):
                         SETTINGS.HOWTO_IMAGE_URL,
                         "Please take a complete photo of the worksheet. ⟳ \n कृपया कार्यपत्रिका संपूर्ण दिसेल असा फोटो काढा. ⟳"
                     )
+                    return
                     # send_message(
                     #     from_no,
                     #     "Please take a complete photo of the worksheet. ⟳ \n"
