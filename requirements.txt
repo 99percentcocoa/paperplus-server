@@ -9,3 +9,7 @@ pupil-apriltags
 python-dotenv
 requests
 tinydb
+psycopg[binary]
+weasyprint
+scipy
+paddleocr

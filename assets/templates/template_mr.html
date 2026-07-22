@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+  <title>MCQ Worksheet</title>
+  <link rel="stylesheet" href="templates/style.css">
+</head>
+<body>
+  <header>
+    
+    {{tags_html}}
+
+    <!-- <div class="marker top-left" style="background-image: url('id1.svg')"></div>
+    <div class="marker top-right" style="background-image: url('id2.svg')"></div>
+    <div class="marker bottom-left" style="background-image: url('id3.svg')"></div>
+    <div class="marker bottom-right" style="background-image: url('id4.svg')"></div> -->
+
+    <!-- <div class="roll-no-box"></div> -->
+
+    <div id="logo"><img src="logo.jpg" class="logo"/></div>
+
+    <h1>गणिती क्रिया सराव कार्यपत्रिका</h1>
+    <!-- <div class="header-container">
+      <img src="logo.jpg" class="logo"/>
+      <h1>Homework Worksheet</h1>
+    </div> -->
+  <p>ID: {{worksheet_id}} &nbsp;&nbsp; नाव: ____________________ &nbsp;&nbsp; इयत्ता: _____</p>
+  <!-- <p>ID: {{worksheet_id}} &nbsp;&nbsp; नाव: {{student_name}} &nbsp;&nbsp; इयत्ता: {{student_iyatta}} &nbsp;&nbsp; दिनांक: {{worksheet_date}}</p> -->
+  
+
+    <div id="instructions">
+      <table class="instructions-table">
+        <tr>
+          <td class="instructions-text">प्रश्नाचे उत्तर चिन्हांकित <br>करण्याची पद्धत:</td>
+          <td class="instructions-example"><img src="instructions/correct.jpg" /><br>बरोबर ✔</td>
+          <td class="instructions-example"><img src="instructions/wrong_tick.jpg" /><br>चूक ✗</td>
+          <td class="instructions-example"><img src="instructions/wrong_overfill.jpg" /><br>चूक ✗</td>
+          <td class="instructions-example"><img src="instructions/wrong_overwrite.jpg" /><br>चूक ✗</td>
+          <td class="instructions-example"><img src="instructions/wrong_multiple.jpg" /><br>चूक ✗</td>
+        </tr>
+      </table>
+    </div>
+    <h2>या नंबर वर व्हॉट्सअ‍ॅप द्वारे फोटो पाठवणे: <img src='whatsapp.png' class="whatsapp_logo" /> <u><b>+912071173227</b></u></h2>
+
+    <!-- <h2>या नंबर वर व्हॉट्सअ‍ॅप द्वारे फोटो पाठवणे: <img src='whatsapp.png' class="whatsapp_logo" /> <u><b>+912071173227</b></u></h2> -->
+  </header>
+
+  <table class="questions-table">
+
+    {{questions}}
+
+    <!-- <tr>
+      <td>
+        <div class="question">
+          <p>1. What is 12 × 8?</p>
+          <table class="options-table">
+            <tr>
+              <td><div class="circle"></div>A</td>
+              <td><div class="circle"></div>B</td>
+              <td><div class="circle"></div>C</td>
+              <td><div class="circle"></div>D</td>
+            </tr>
+          </table>
+        </div>
+      </td>
+      <td>
+        <div class="question">
+          <p>2. Which fraction is greater: 3/5 or 4/7? This question is intentionally long to see wrapping behavior.</p>
+          <table class="options-table">
+            <tr>
+              <td><div class="circle"></div>A</td>
+              <td><div class="circle"></div>B</td>
+              <td><div class="circle"></div>C</td>
+              <td><div class="circle"></div>D</td>
+            </tr>
+          </table>
+        </div>
+      </td>
+    </tr>
+
+    <tr>
+      <td>
+        <div class="question">
+          <p>3. What is the square of 15?</p>
+          <table class="options-table">
+            <tr>
+              <td><div class="circle"></div>A</td>
+              <td><div class="circle"></div>B</td>
+              <td><div class="circle"></div>C</td>
+              <td><div class="circle"></div>D</td>
+            </tr>
+          </table>
+        </div>
+      </td>
+      <td>
+        <div class="question">
+          <p>4. What is 7 + 9?</p>
+          <table class="options-table">
+            <tr>
+              <td><div class="circle"></div>A</td>
+              <td><div class="circle"></div>B</td>
+              <td><div class="circle"></div>C</td>
+              <td><div class="circle"></div>D</td>
+            </tr>
+          </table>
+        </div>
+      </td>
+    </tr> -->
+  </table>
+  <div class="roll-no-box"></div>
+</body>
+</html>

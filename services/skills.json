@@ -1,0 +1,234 @@
+[
+  {
+    "code": "1A",
+    "difficulty_level": "1",
+    "skill": "1-digit addition - no carry",
+    "example": "2+2",
+    "misconceptions": "make an off-by-one error",
+    "dependencies": ""
+  },
+  {
+    "code": "1S",
+    "difficulty_level": "1",
+    "skill": "1-digit subtraction - no borrow",
+    "example": "9-5",
+    "misconceptions": "make an off-by-one error,\nadding instead of subtracting",
+    "dependencies": ""
+  },
+  {
+    "code": "T5",
+    "difficulty_level": "1",
+    "skill": "Multiplication tables - up to 5",
+    "example": "3x4",
+    "misconceptions": "confuse one table with another",
+    "dependencies": ""
+  },
+  {
+    "code": "2A1",
+    "difficulty_level": "1",
+    "skill": "2+1 digit addition - no carry",
+    "example": "11+5",
+    "misconceptions": "make an off-by-one error, \nadd the second number at the wrong place value",
+    "dependencies": "1A"
+  },
+  {
+    "code": "2A2",
+    "difficulty_level": "1",
+    "skill": "2+2 digit addition - no carry",
+    "example": "11+22",
+    "misconceptions": "make an off-by-one error, \nadd the second number at the wrong place value",
+    "dependencies": "1A"
+  },
+  {
+    "code": "2S1",
+    "difficulty_level": "1",
+    "skill": "2-1 digit subtraction - no borrow",
+    "example": "19-4",
+    "misconceptions": "make an off-by-one error,\nadding instead of subtracting,\nsubtract the second number at the wrong place value",
+    "dependencies": "1S"
+  },
+  {
+    "code": "1AC",
+    "difficulty_level": "2",
+    "skill": "1-digit addition - carry",
+    "example": "9+4",
+    "misconceptions": "make an off-by-one error,\nforget to add the carry",
+    "dependencies": "1A"
+  },
+  {
+    "code": "2A1C",
+    "difficulty_level": "2",
+    "skill": "2+1 digit addition - carry",
+    "example": "17+9",
+    "misconceptions": "make an off-by-one error,\nforget to add the carry,\nadd the second number at the wrong place value",
+    "dependencies": "2A1, 1AC"
+  },
+  {
+    "code": "2A2C",
+    "difficulty_level": "2",
+    "skill": "2+2 digit addition - double carry",
+    "example": "96+89",
+    "misconceptions": "make an off-by-one error,\nforget to add one of the carries,\nadd the second number at the wrong place value",
+    "dependencies": "2A1C"
+  },
+  {
+    "code": "2S1B",
+    "difficulty_level": "2",
+    "skill": "2-1 digit subtraction - borrow",
+    "example": "14-9",
+    "misconceptions": "make an off-by-one error,\nadding instead of subtracting\nforget to add one of the carries,\nsubtract the second number at the wrong place value",
+    "dependencies": "2S1"
+  },
+  {
+    "code": "2S2",
+    "difficulty_level": "2",
+    "skill": "2-2 digit subtraction - no borrow",
+    "example": "19-14",
+    "misconceptions": "make an off-by-one error,\nadding instead of subtracting,\nsubtract the second number at the wrong place value",
+    "dependencies": "2S1"
+  },
+  {
+    "code": "T10",
+    "difficulty_level": "2",
+    "skill": "Multiplication tables - 5 to 10",
+    "example": "9x7",
+    "misconceptions": "confuse one table with another",
+    "dependencies": "T5"
+  },
+  {
+    "code": "3A",
+    "difficulty_level": "2",
+    "skill": "3-digit addition - no carry",
+    "example": "123+321",
+    "misconceptions": "make an off-by-one error, \nadd the second number at the wrong place value",
+    "dependencies": "2A2"
+  },
+  {
+    "code": "3AC",
+    "difficulty_level": "2",
+    "skill": "3-digit addition - single carry",
+    "example": "369+12",
+    "misconceptions": "make an off-by-one error,\nforget to add the carry,\nadd the second number at the wrong place value",
+    "dependencies": "2A1C, 3A"
+  },
+  {
+    "code": "3S",
+    "difficulty_level": "2",
+    "skill": "3-digit subtraction - no borrow",
+    "example": "999-888",
+    "misconceptions": "make an off-by-one error,\nadding instead of subtracting,\nsubtract the second number at the wrong place value",
+    "dependencies": "2S2"
+  },
+  {
+    "code": "2S2B",
+    "difficulty_level": "3",
+    "skill": "2-2 digit subtraction - borrow",
+    "example": "32-19",
+    "misconceptions": "make an off-by-one error,\nadding instead of subtracting\nforget to add one of the carries,\nsubtract the second number at the wrong place value",
+    "dependencies": "2S1B"
+  },
+  {
+    "code": "3AC2",
+    "difficulty_level": "3",
+    "skill": "3-digit addition - double carry",
+    "example": "369+243",
+    "misconceptions": "make an off-by-one error,\nforget to add one of the carries,\nadd the second number at the wrong place value",
+    "dependencies": "3AC"
+  },
+  {
+    "code": "3SB",
+    "difficulty_level": "3",
+    "skill": "3-digit subtraction - single borrow",
+    "example": "991-222",
+    "misconceptions": "make an off-by-one error,\nadding instead of subtracting\nforget to add one of the carries,\nsubtract the second number at the wrong place value",
+    "dependencies": "2S1B, 3S"
+  },
+  {
+    "code": "3SB2",
+    "difficulty_level": "3",
+    "skill": "3-digit subtraction - double borrow",
+    "example": "901-222",
+    "misconceptions": "make an off-by-one error,\nadding instead of subtracting\nforget to add one of the carries,\nsubtract the second number at the wrong place value",
+    "dependencies": "3SB"
+  },
+  {
+    "code": "2M1",
+    "difficulty_level": "3",
+    "skill": "2x1 multiplication - no carry",
+    "example": "13x2",
+    "misconceptions": "make an off-by-one error,\nadd instead of multiply",
+    "dependencies": "T5"
+  },
+  {
+    "code": "3M1",
+    "difficulty_level": "3",
+    "skill": "3x1 multiplication - no carry",
+    "example": "123x2",
+    "misconceptions": "make an off-by-one error,\nadd instead of multiply",
+    "dependencies": "2M1"
+  },
+  {
+    "code": "2M1C",
+    "difficulty_level": "4",
+    "skill": "2x1 multiplication - carry",
+    "example": "12x9",
+    "misconceptions": "make an off-by-one error,\nadd instead of multiply,\nforget to add one of the carries",
+    "dependencies": "T10"
+  },
+  {
+    "code": "3M1C",
+    "difficulty_level": "4",
+    "skill": "3x1 multiplication - single carry",
+    "example": "246x2",
+    "misconceptions": "make an off-by-one error,\nadd instead of multiply,\nforget to add one of the carries",
+    "dependencies": "2M1C"
+  },
+  {
+    "code": "3M1C2",
+    "difficulty_level": "5",
+    "skill": "3x1 multiplication - double carry",
+    "example": "246x4",
+    "misconceptions": "make an off-by-one error,\nadd instead of multiply,\nforget to add one of the carries,\nmultiply the second number at the wrong place value",
+    "dependencies": "3M1C"
+  },
+  {
+    "code": "2M2",
+    "difficulty_level": "5",
+    "skill": "2x2 multiplication - no carry\n(multiplication part should not have carry)",
+    "example": "31x12",
+    "misconceptions": "make an off-by-one error,\nadd instead of multiply,\nforget to multiply the other place values,\nforget to add carries during addition",
+    "dependencies": "2M1, 3AC2"
+  },
+  {
+    "code": "2D1",
+    "difficulty_level": "5",
+    "skill": "2/1 division without remainder",
+    "example": "81/3",
+    "misconceptions": "make an off-by-one error,\nmake mistakes while adding or subtracting during division",
+    "dependencies": ""
+  },
+  {
+    "code": "3D1",
+    "difficulty_level": "5",
+    "skill": "3/1 division without remainder",
+    "example": "123/3",
+    "misconceptions": "make an off-by-one error,\nmake mistakes while adding or subtracting during division",
+    "dependencies": ""
+  },
+  {
+    "code": "2M2C",
+    "difficulty_level": "6",
+    "skill": "2x2 multiplication - carry",
+    "example": "69x69",
+    "misconceptions": "make an off-by-one error,\nadd instead of multiply,\nforget to add one of the carries,\nmultiply the second number at the wrong place value",
+    "dependencies": ""
+  },
+  {
+    "code": "3M2C",
+    "difficulty_level": "7",
+    "skill": "3x2 multiplication - carry",
+    "example": "479x34",
+    "misconceptions": "make an off-by-one error,\nadd instead of multiply,\nforget to add one of the carries,\nmultiply the second number at the wrong place value",
+    "dependencies": ""
+  }
+]

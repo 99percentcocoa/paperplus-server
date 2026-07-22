@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+import random
 from typing import List, Optional
 from pathlib import Path
 
@@ -90,10 +91,11 @@ class DetectionResult:
     detections: List[AprilTagDetection]
     tag_family: str = None
     tag_ids: List[int] = field(init=False)
-    sorted_detections: List[AprilTagDetection] = field(init=False)
+    sorted_corner_detections: List[AprilTagDetection] = field(init=False)
+    sorted_row_detections: List[AprilTagDetection] = field(init=False)
     
     def __post_init__(self):
-        """Extract tag IDs from detections and sort detections clockwise."""
+        """Extract tag IDs from detections and sort corner detections clockwise. """
         # Validate detections based on tag family
         num_detections = len(self.detections)
         
@@ -103,19 +105,20 @@ class DetectionResult:
             
             # Lazy import to avoid circular dependency
             from services.image_service import sort_detections_clockwise
-            self.sorted_detections = sort_detections_clockwise(self.detections)
+            self.sorted_corner_detections = sort_detections_clockwise(self.detections)
 
         elif self.tag_family == "25h9":
             required_detections = SETTINGS.NUM_ROW_TAGS
             if num_detections < required_detections:
                 raise ValueError(f"Tag family '25h9' requires at least {required_detections} detections, but got {num_detections}")
             
-            # Filter out detections with tag_id outside valid range [0, required_detections-1]
-            valid_detections = [d for d in self.detections if 0 <= d.tag_id <= required_detections]
+            # Filter out detections with tag_id outside valid range [0, 34] (base-35 encoding)
+            valid_detections = [d for d in self.detections if 0 <= d.tag_id <= 34]
             self.detections = valid_detections
             
             # Sort 25h9 detections from top to bottom by Y-coordinate
-            self.sorted_detections = sorted(self.detections, key=lambda d: d.center[1])
+            self.sorted_row_detections = sorted(self.detections, key=lambda d: d.center[1])
+            self.detections = self.sorted_row_detections
         
         # save tag_ids as list of int
         self.tag_ids = [detection.tag_id for detection in self.detections]
@@ -169,6 +172,7 @@ class WorksheetTemplate:
     """Metadata for a worksheet template."""
     input_image: InputImageMeta
     cropped_image: Optional[InputImageMeta] = None
+    blurred_image: Optional[InputImageMeta] = None
     preprocessed_image: Optional[InputImageMeta] = None
     corner_detections: Optional[DetectionResult] = None
     row_detections: Optional[DetectionResult] = None
@@ -180,6 +184,7 @@ class WorksheetTemplate:
     marked_answers: Optional[List[str]] = None
     answer_key: Optional[List[str]] = None
     score: Optional[List[int]] = None
+    roll_number: Optional[str] = None
 
 @dataclass
 class ROI:
@@ -219,3 +224,81 @@ class ContourData:
     def get_global_contour(self, offset_x: int, offset_y: int) -> np.ndarray:
         """Get the contour coordinates in the global image space by applying an offset."""
         return self.contour + np.array([[[offset_x, offset_y]]])
+
+@dataclass
+class Question:
+    """Data class to track question information."""
+    index: int
+    question_text: str
+    skill_code: str
+    options: list
+    answer: int # 1-based index of the correct answer in options, to be converted later
+    possible_distractors: list
+    correct_option: str = None # will be filled in choose_distractors
+
+    def choose_distractors(self) -> list:
+        """
+        Choose 3 random distractors from all possible distractors
+        and assign them random positions along with the correct answer.
+        
+        Returns:
+            list: A list of 4 options with the correct answer at a random position.
+        """
+        # Get the correct answer from the options at the answer index
+        correct_answer = self.options[self.answer - 1]
+
+        # Keep only non-negative distractors and avoid duplicates of the correct answer.
+        filtered_distractors = [
+            d for d in self.possible_distractors
+            if _is_non_negative_option(d) and d != correct_answer
+        ]
+
+        if len(filtered_distractors) < 3:
+            raise ValueError("Need at least 3 non-negative possible distractors")
+
+        # Choose 3 random distractors
+        chosen_distractors = random.sample(filtered_distractors, 3)
+        
+        # Create a list with the correct answer and chosen distractors
+        all_options = [correct_answer] + chosen_distractors
+        
+        # Shuffle the options
+        random.shuffle(all_options)
+        
+        # Find the new position (1-4) of the correct answer
+        new_answer_position = all_options.index(correct_answer) + 1
+        
+        # Update the object
+        self.options = all_options
+        self.answer = new_answer_position
+        
+        return all_options
+
+# helper for Question.choose_distractors to filter out invalid distractors    
+def _is_non_negative_option(value):
+    """Return True only for non-negative answer/option values."""
+    if isinstance(value, int):
+        return value >= 0
+    if isinstance(value, str):
+        s = value.strip()
+        if not s:
+            return False
+        if "R" in s:
+            q, sep, r = s.partition("R")
+            if not sep:
+                return False
+            try:
+                return int(q) >= 0 and int(r) >= 0
+            except ValueError:
+                return False
+        try:
+            return int(s) >= 0
+        except ValueError:
+            return False
+    return False
+
+# helper for generating random digits for dummy distractors in case of insufficient valid distractors
+def _rand_digit(exclude_zero=False):
+    if exclude_zero:
+        return random.randint(1, 9)
+    return random.randint(0, 9)

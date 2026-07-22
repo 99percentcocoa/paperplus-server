@@ -12,6 +12,7 @@ import cv2  # pylint: disable=no-member
 import numpy as np
 from PIL import ImageDraw, ImageFont
 from tinydb import TinyDB
+from db import get_worksheet_json, get_answer_key
 from services.image_service import detect_tags_25h9, get_roi_coordinates, get_cropped_bubbles_roi
 from services.communication_service import send_message, send_image
 from services.logging_service import log_to_sheet
@@ -82,12 +83,19 @@ def check_worksheet(worksheet_meta: WorksheetTemplate, use_classifier: bool, deb
     Returns:
         tuple: (answers, score, success) where success indicates if processing completed
     """
-    # Load answer key from database
+    # Load answer key from database (TinyDB)
+    # try:
+    #     db = TinyDB('worksheets.json')
+    #     ans_key = db.get(doc_id=worksheet_meta.worksheet_id).get('answerKey')
+    # except Exception as e:
+    #     logger.error("Failed to load answer key for worksheet %s: %s", worksheet_meta.worksheet_id, e)
+    #     return [], [], False
+    
+    # Load answer key from database (postgres)
     try:
-        db = TinyDB('worksheets.json')
-        ans_key = db.get(doc_id=worksheet_meta.worksheet_id).get('answerKey')
+        ans_key = get_answer_key(worksheet_meta.worksheet_id)
     except Exception as e:
-        logger.error("Failed to load answer key for worksheet %s: %s", worksheet_meta.worksheet_id, e)
+        logger.error("Failed to load answer key from postgres for worksheet %s: %s", worksheet_meta.worksheet_id, e)
         return [], [], False
 
     worksheet_meta.answer_key = ans_key
@@ -114,7 +122,7 @@ def check_worksheet(worksheet_meta: WorksheetTemplate, use_classifier: bool, deb
         logger.debug("Processing ROI %s", q_no)
 
         if use_classifier:
-            roi_image_array = worksheet_meta.cropped_image.image_array[
+            roi_image_array = worksheet_meta.blurred_image.image_array[
                 y1:y2, 
                 x1:x2
             ]
@@ -191,6 +199,16 @@ def check_worksheet(worksheet_meta: WorksheetTemplate, use_classifier: bool, deb
             # draw rectangle around ROI in checked image and write ✔ near top-right
             pil_draw.rectangle([(x1, y1), (x2, y2)], fill=None, outline=(0, 127, 0))
             pil_draw.text((x1 + roi_coordinate.width() - 5, y1 - 5), "✔", fill=(0, 127, 0), font=font)
+        elif ans == '':
+            score.append(0)
+            logger.debug("Question %s unanswered or multiple bubbles detected.", q_no)
+
+            # draw rectangle around ROI in debug image
+            cv2.rectangle(debug_image_array, (x1, y1), (x2, y2), (255, 86, 86), 2)
+
+            # draw rectangle around ROI in checked image and write ? near top-right
+            pil_draw.rectangle([(x1, y1), (x2, y2)], fill=None, outline=(255, 86, 86))
+            pil_draw.text((x1 + roi_coordinate.width() - 5, y1 - 5), "?", fill=(255, 86, 86), font=font)
         else:
             score.append(0)
             logger.debug("Question %s incorrect.", q_no)

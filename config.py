@@ -36,9 +36,36 @@ class Config:
     LEFT_QUESTION_ROI = (85, -40, 485, 90)
     RIGHT_QUESTION_ROI = (620, -40, 485, 90)
 
+    ROLL_NUMBER_ROI = (420, 1660, 850, 1754) # x1, y1, x2, y2
+
     MIN_MARK_AREA = 600
     MAX_MARK_AREA = 950
     FILL_THRESHOLD = 0.6
     MIN_CIRCULARITY = 0.75
+
+    # Worksheet levels map to difficulty level distributions
+    # Keys are difficulty levels, values are proportions of 20 questions
+    WORKSHEET_LEVEL_DISTRIBUTIONS = {
+        "A": {1: 1.0},
+        "B": {1: 0.5, 2: 0.5},
+        "C": {1: 0.25, 2: 0.25, 3: 0.5},
+        "D": {1: 0.125, 2: 0.125, 3: 0.25, 4: 0.5},  # 1-2 (25%) split evenly
+        "E": {1: 1/12, 2: 1/12, 3: 1/12, 4: 0.25, 5: 0.5},  # 1-3 (25%) split evenly
+        "F": {1: 1/16, 2: 1/16, 3: 1/16, 4: 1/16, 5: 0.25, 6: 0.5},  # 1-4 (25%) split evenly
+        "G": {1: 0.05, 2: 0.05, 3: 0.05, 4: 0.05, 5: 0.05, 6: 0.25, 7: 0.5},  # 1-5 (25%) split evenly
+    }
+
+    # PDF Generation
+    ORIENTATION_ID = 586
+    TAGS_PATH = os.getenv('TAGS_PATH')
+    TEMPLATES_PATH = os.getenv('TEMPLATES_PATH')
+    PDF_WRITE_PATH = os.getenv('PDF_WRITE_PATH')
+    WORKSHEET_JSON_PATH = os.getenv('WORKSHEET_JSON_PATH')
+    HTML_BASE_DIR = os.getenv('HTML_BASE_DIR')
+
+    # Database
+    DATABASE_URL = os.getenv('DATABASE_URL')
+
+    HOWTO_IMAGE_URL = os.getenv('HOWTO_IMAGE_URL')
 
 SETTINGS = Config()

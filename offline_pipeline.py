@@ -25,6 +25,7 @@ from services.image_service import scan_image, save_preprocessed, save_debug, sa
 from services.grading_service import check_worksheet
 from models import InputImageMeta, WorksheetTemplate
 from config import SETTINGS
+from services.inference import predict_ocr
 
 # Configure logging
 logging.basicConfig(
@@ -93,6 +94,7 @@ def process_worksheet(
         try:
             worksheet = scan_image(input_image)
             logger.info("✓ Image scan successful. Worksheet ID: %s", worksheet.worksheet_id)
+            logger.info("Roll number: %s", worksheet.roll_number)
         except ValueError as e:
             logger.error("✗ Image scan failed: %s", e)
             logger.error("  Possible causes: Missing/incorrect corner tags, poor image quality")

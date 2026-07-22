@@ -20,6 +20,8 @@ paperplus.sql
 # Logs and temp files
 *.log
 *.tmp
+paperplus.sql
+batch_generate_worksheets.py
 
 # System or editor files
 .DS_Store
@@ -35,6 +37,6 @@ debug/
 checked/
 logs/
 offline/
-csv/
 json/
 pdf/
+csv/

@@ -1,0 +1,1 @@
+ALTER TABLE worksheets ADD COLUMN IF NOT EXISTS title text;
