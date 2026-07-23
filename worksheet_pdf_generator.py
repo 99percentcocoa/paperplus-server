@@ -108,9 +108,6 @@ if __name__ == "__main__":
     #   --base-dir /home/saarang/paperplus_server/assets
     parser = argparse.ArgumentParser(description="Generate a worksheet PDF from a worksheet JSON file.")
     parser.add_argument("--worksheet-id", type=int, required=True, help="Numeric worksheet id used by the tag functions.")
-    parser.add_argument("--student-name", required=True, help="Student name to render on the worksheet header.")
-    parser.add_argument("--student-iyatta", required=True, help="Class/grade to render on the worksheet header.")
-    parser.add_argument("--worksheet-date", required=True, help="Date string to render on the worksheet header.")
     parser.add_argument(
         "--worksheet-json-filename",
         required=True,
@@ -131,9 +128,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
     generate_worksheet_pdf(
         worksheet_id=args.worksheet_id,
-        student_name=args.student_name,
-        student_iyatta=args.student_iyatta,
-        worksheet_date=args.worksheet_date,
         worksheet_json_filename=args.worksheet_json_filename,
         tags_folder_path=args.tags_folder_path,
         output_path=f"{args.output_path}/{args.worksheet_id}.pdf",
