@@ -27,6 +27,7 @@ batch_generate_worksheets.py
 .DS_Store
 .idea/
 .vscode/
+PaperPlus System.md
 
 # Uploads or generated data
 downloads/
