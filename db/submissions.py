@@ -2,31 +2,20 @@
 
 import json
 
-from .assignments import get_assignment_by_worksheet
 from .connection import get_connection
 
 
-def create_submission(assignment_id: int, worksheet_id: int,
+def create_submission(student_id: str, worksheet_id: int,
                       score: int, from_number: str, answers_json: dict | list) -> int:
     """Record a graded submission. Returns submission_id."""
-    assignment = get_assignment_by_worksheet(worksheet_id)
-    if assignment is None:
-        raise ValueError(f"No open assignment found for worksheet_id={worksheet_id}")
-
-    student_id = assignment["student_id"]
-    if assignment["assignment_id"] != assignment_id:
-        raise ValueError(
-            "assignment_id does not match the latest open assignment for worksheet"
-        )
-
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """INSERT INTO submissions
-                       (student_id, assignment_id, worksheet_id, score, from_number, answers_json)
-                   VALUES (%s, %s, %s, %s, %s, %s)
+                       (student_id, worksheet_id, score, from_number, answers_json)
+                   VALUES (%s, %s, %s, %s, %s)
                    RETURNING submission_id""",
-                (student_id, assignment_id, worksheet_id, score, from_number,
+                (student_id, worksheet_id, score, from_number,
                  json.dumps(answers_json)),
             )
             return cur.fetchone()["submission_id"]

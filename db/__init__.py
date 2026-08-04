@@ -22,7 +22,6 @@ from .students import upsert_student, get_student, update_student_level, deactiv
 from .skills import upsert_skill, get_skill, list_skills, import_skills_from_json
 from .worksheets import create_worksheet, check_test, get_worksheet, get_worksheet_json, get_answer_key, list_worksheets
 from .questions import insert_questions_for_worksheet, get_questions_for_worksheet, get_question
-from .assignments import create_assignment, get_assignment, get_assignment_by_student_worksheet, get_assignment_by_worksheet, mark_assignment_submitted, list_assignments
 from .submissions import create_submission, get_submission, get_submissions_for_worksheet, get_latest_submission, get_latest_submission_by_worksheet, overwrite_submission
 from .attempts import insert_attempts, delete_attempts_for_submission, get_attempts_for_submission
 from .mastery import update_skill_mastery, get_skill_mastery, recalculate_skill_mastery
@@ -64,13 +63,6 @@ __all__ = [
     "insert_questions_for_worksheet",
     "get_questions_for_worksheet",
     "get_question",
-    # Assignments
-    "create_assignment",
-    "get_assignment",
-    "get_assignment_by_student_worksheet",
-    "get_assignment_by_worksheet",
-    "mark_assignment_submitted",
-    "list_assignments",
     # Submissions
     "create_submission",
     "get_submission",

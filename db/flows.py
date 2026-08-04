@@ -8,7 +8,6 @@ import json
 from .connection import get_connection
 from .worksheets import create_worksheet, get_worksheet_json
 from .questions import insert_questions_for_worksheet, get_questions_for_worksheet
-from .assignments import get_assignment_by_worksheet, mark_assignment_submitted
 from .submissions import (
     create_submission,
     get_latest_submission_by_worksheet,
@@ -58,32 +57,20 @@ def add_worksheet_to_db(worksheet_json: dict | list,
 
 
 # note: this function does not do any checking.
-def process_submission(worksheet_id: int, score: int,
+def process_submission(student_id: str, worksheet_id: int, score: int,
                        from_number: str, answers_json: list[dict]) -> dict:
     """
     Full flow: "receive a submission from a student / process the worksheet"
 
-    1. Look up assignment by worksheet_id
-    2. Derive student_id from the assignment
-    3. Create submission record
-    4. Mark assignment as submitted
-    5. Build attempt records from answers_json
-    6. Insert attempts
-    7. Recalculate skill mastery for affected skills
-    8. Return {submission_id, assignment_id, student_id, attempts_count}
+    1. Create submission record
+    2. Build attempt records from answers_json
+    3. Insert attempts
+    4. Recalculate skill mastery for affected skills
+    5. Return {submission_id, student_id, attempts_count}
     """
-    assignment = get_assignment_by_worksheet(worksheet_id)
-    if assignment is None:
-        raise ValueError(f"No open assignment found for worksheet_id={worksheet_id}")
-
-    assignment_id = assignment["assignment_id"]
-    student_id = assignment["student_id"]
-
     submission_id = create_submission(
-        assignment_id, worksheet_id, score, from_number, answers_json
+        student_id, worksheet_id, score, from_number, answers_json
     )
-
-    mark_assignment_submitted(assignment_id)
 
     questions = get_questions_for_worksheet(worksheet_id)
     attempts = []
@@ -108,32 +95,25 @@ def process_submission(worksheet_id: int, score: int,
 
     return {
         "submission_id": submission_id,
-        "assignment_id": assignment_id,
         "student_id": student_id,
         "attempts_count": len(attempts),
     }
 
 
-def overwrite_submission_flow(worksheet_id: int, score: int,
+def overwrite_submission_flow(student_id: str, worksheet_id: int, score: int,
                               answers_json: list[dict]) -> dict:
     """
     Manual correction flow: "if already exists, overwrite it"
 
-    1. Derive student_id from the assignment
-    2. Find existing submission by worksheet
-    3. Delete old attempts
-    4. Overwrite submission score/answers
-    5. Re-insert new attempts
-    6. Recalculate mastery
+    1. Find existing submission by worksheet
+    2. Delete old attempts
+    3. Overwrite submission score/answers
+    4. Re-insert new attempts
+    5. Recalculate mastery
     """
-    assignment = get_assignment_by_worksheet(worksheet_id)
-    if assignment is None:
-        raise ValueError(f"No assignment found for worksheet_id={worksheet_id}")
-    student_id = assignment["student_id"]
-
     existing = get_latest_submission_by_worksheet(worksheet_id)
     if existing is None:
-        return process_submission(worksheet_id, score, "", answers_json)
+        return process_submission(student_id, worksheet_id, score, "", answers_json)
 
     submission_id = existing["submission_id"]
 

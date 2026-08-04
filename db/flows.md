@@ -10,8 +10,6 @@ add a new worksheet to the database
 generate pdf
 - retrieve json from worksheets - requires worksheet_id
 - call pdf_generator module
-- assign a worksheet to a student
-- insert record into assignments - requires worksheet_id and student_id
 - receive a submission from a student
 - check whether from_number is in users or not.
 
@@ -20,8 +18,7 @@ process the worksheet
 - retrieve the answer key from the database (worksheet's json - "ans_key")
 - extract worksheet_id from worksheet
 - check worksheet and get results_json, score, from_number
-- retrieve the assignment_id by querying assignments with worksheet_id from submission
-- insert record into submissions - requires student_id, worksheet_id, assignment_id, score, from_number, answers_json
+- insert record into submissions - requires student_id, worksheet_id, score, from_number, answers_json
 - process answers_json into attempt records, and insert all - requires student_id, submission_id, question_id, worksheet_id, is_correct, skill_code
 
 manually submit a worksheet which isn't detecting or mistake has been made
