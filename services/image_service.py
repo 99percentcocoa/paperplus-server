@@ -18,7 +18,7 @@ from tinydb import TinyDB
 from pupil_apriltags import Detector
 from PIL import Image, ImageDraw, ImageFont
 from config import SETTINGS
-from models import DetectionResult, InputImageMeta, WorksheetTemplate, ROI
+from models import DetectionResult, InputImageMeta, WorksheetTemplate, ROI, RollNumberError
 from services.inference import predict_ocr
 
 logger = logging.getLogger(__name__)
@@ -188,12 +188,14 @@ def scan_image(input_image: InputImageMeta) -> WorksheetTemplate:
     # get roll number by applying ocr inference. crop the roll number box using the defined ROI and run OCR on it
     x1, y1, x2, y2 = SETTINGS.ROLL_NUMBER_ROI
     roll_number_roi = cropped_image.image_array[y1:y2, x1:x2]
+    if roll_number_roi.size == 0 or roll_number_roi.shape[0] == 0 or roll_number_roi.shape[1] == 0:
+        raise RollNumberError(f"Roll number ROI is empty (shape={roll_number_roi.shape}); cannot run OCR.")
     roll_number_roi_meta = InputImageMeta(image_array=roll_number_roi)
     roll_number = predict_ocr(roll_number_roi_meta)
     # roll_number = ""
 
     if not (isinstance(roll_number, str) and roll_number.isdigit() and len(roll_number) == 4):
-        raise ValueError(f"Detected roll number '{roll_number}' is not a valid 4-digit number.")
+        raise RollNumberError(f"Detected roll number '{roll_number}' is not a valid 4-digit number.")
 
     logger.debug("Roll number detected: %s", roll_number)
 

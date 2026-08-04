@@ -10,6 +10,18 @@ import numpy as np
 from pupil_apriltags import Detection as AprilTagDetection
 from PIL.Image import Image as PILImage
 
+
+class CornerTagDetectionError(ValueError):
+    """Raised when corner (36h11) AprilTag detection does not find enough tags."""
+
+
+class RowTagDetectionError(ValueError):
+    """Raised when row (25h9) AprilTag detection does not find enough tags."""
+
+
+class RollNumberError(ValueError):
+    """Raised when the roll number ROI or its OCR result is invalid."""
+
 @dataclass
 class InputImageMeta:
     """Metadata for an input image."""
@@ -101,7 +113,7 @@ class DetectionResult:
         
         if self.tag_family == "36h11":
             if num_detections < 4:
-                raise ValueError(f"Tag family '36h11' requires at least 4 detections, but got {num_detections}")
+                raise CornerTagDetectionError(f"Tag family '36h11' requires at least 4 detections, but got {num_detections}")
             
             # Lazy import to avoid circular dependency
             from services.image_service import sort_detections_clockwise
@@ -110,7 +122,7 @@ class DetectionResult:
         elif self.tag_family == "25h9":
             required_detections = SETTINGS.NUM_ROW_TAGS
             if num_detections < required_detections:
-                raise ValueError(f"Tag family '25h9' requires at least {required_detections} detections, but got {num_detections}")
+                raise RowTagDetectionError(f"Tag family '25h9' requires at least {required_detections} detections, but got {num_detections}")
             
             # Filter out detections with tag_id outside valid range [0, 34] (base-35 encoding)
             valid_detections = [d for d in self.detections if 0 <= d.tag_id <= 34]

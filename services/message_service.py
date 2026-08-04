@@ -16,7 +16,7 @@ from services.grading_service import check_worksheet
 from services.logging_service import log_to_sheet
 from services.communication_service import send_image, send_message, is_valid_image_message
 from config import SETTINGS
-from models import DetectionResult, InputImageMeta, WorksheetTemplate
+from models import DetectionResult, InputImageMeta, WorksheetTemplate, CornerTagDetectionError, RowTagDetectionError, RollNumberError
 
 import cv2
 from PIL import Image
@@ -69,14 +69,22 @@ def handle_message(data, session_id):
                 try:
                     # image validation, tag sorting done in scan_image
                     worksheet = scan_image(worksheet.input_image)
-                except ValueError as e:
-                    # Corner tags detection failed
-                    logger.debug("Less/more than 4 corner tags found.")
+                except (CornerTagDetectionError, RowTagDetectionError) as e:
+                    # Corner or row tags detection failed
+                    logger.debug("Tag detection failed: %s", e)
                     send_image(
                         from_no,
                         SETTINGS.HOWTO_IMAGE_URL,
                         "Please take a complete photo of the worksheet. ⟳ \n कृपया कार्यपत्रिका संपूर्ण दिसेल असा फोटो काढा. ⟳"
                     )
+                    return
+                except RollNumberError as e:
+                    # Roll number ROI/OCR result was invalid
+                    logger.debug("Roll number detection failed: %s", e)
+                    send_message(
+                        from_no,
+                        "Could not read the roll number clearly. Please retake the photo. ⟳ \n"
+                        "रोल नंबर नीट वाचता आला नाही. कृपया फोटो परत काढा. ⟳")
                     return
                     # send_message(
                     #     from_no,
