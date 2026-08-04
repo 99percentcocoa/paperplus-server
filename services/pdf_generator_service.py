@@ -1,3 +1,4 @@
+import logging
 from weasyprint import HTML, CSS
 import json
 from config import SETTINGS
@@ -5,6 +6,8 @@ from services.image_service import worksheet_id_to_rows
 
 ORIENTATION_ID = SETTINGS.ORIENTATION_ID
 TAGS_PATH = SETTINGS.TAGS_PATH
+
+logger = logging.getLogger(__name__)
 
 # opens a json worksheet file
 def open_worksheet(filename):
