@@ -7,6 +7,9 @@ class Config:
     # Server
     SERVER_IP = os.getenv('SERVER_IP')
 
+    # When true, outgoing WhatsApp/Exotel sends are logged instead of dispatched
+    LOCAL_MODE = os.getenv('LOCAL_MODE', 'false').lower() == 'true'
+
     # External Services
     SHEETS_LOGGING_URL = os.getenv('SHEETS_LOGGING_URL')
     GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')

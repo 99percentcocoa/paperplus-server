@@ -31,6 +31,10 @@ def send_message(to_number, message):
         to_number (str): Recipient phone number
         message (str): Message content to send
     """
+    if SETTINGS.LOCAL_MODE:
+        logger.info("[LOCAL_MODE] Would send message to %s: %s", to_number, message)
+        return
+
     payload = json.dumps({
         "whatsapp": {
             "messages": [
@@ -62,6 +66,10 @@ def send_image(to_number, img_url, caption):
         caption (str): Caption for the image
     """
     logger.debug("Sending image %s to %s", img_url, to_number)
+    if SETTINGS.LOCAL_MODE:
+        logger.info("[LOCAL_MODE] Would send image to %s: %s (%s)", to_number, img_url, caption)
+        return
+
     payload = json.dumps({
         "whatsapp": {
             "messages": [
