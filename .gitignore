@@ -16,6 +16,7 @@ secrets.json
 nginx.conf
 paperplus.service
 paperplus.sql
+sync-db.sh
 
 # Logs and temp files
 *.log
