@@ -192,6 +192,9 @@ def scan_image(input_image: InputImageMeta) -> WorksheetTemplate:
     roll_number = predict_ocr(roll_number_roi_meta)
     # roll_number = ""
 
+    if not (isinstance(roll_number, str) and roll_number.isdigit() and len(roll_number) == 4):
+        raise ValueError(f"Detected roll number '{roll_number}' is not a valid 4-digit number.")
+
     logger.debug("Roll number detected: %s", roll_number)
 
     debug_image = cropped_image
