@@ -14,7 +14,7 @@ from .submissions import (
     overwrite_submission,
 )
 from .attempts import insert_attempts, delete_attempts_for_submission
-from .mastery import recalculate_skill_mastery
+from .mastery import recalculate_skill_mastery, evaluate_and_update_level
 
 
 def add_worksheet_to_db(worksheet_json: dict | list,
@@ -66,7 +66,8 @@ def process_submission(student_id: str, worksheet_id: int, score: int,
     2. Build attempt records from answers_json
     3. Insert attempts
     4. Recalculate skill mastery for affected skills
-    5. Return {submission_id, student_id, attempts_count}
+    5. Re-evaluate the student's level and update it if a threshold is crossed
+    6. Return {submission_id, student_id, attempts_count, level_update}
     """
     submission_id = create_submission(
         student_id, worksheet_id, score, from_number, answers_json
@@ -93,10 +94,13 @@ def process_submission(student_id: str, worksheet_id: int, score: int,
     for skill_code in affected_skills:
         recalculate_skill_mastery(student_id, skill_code)
 
+    level_update = evaluate_and_update_level(student_id)
+
     return {
         "submission_id": submission_id,
         "student_id": student_id,
         "attempts_count": len(attempts),
+        "level_update": level_update,
     }
 
 
@@ -141,10 +145,13 @@ def overwrite_submission_flow(student_id: str, worksheet_id: int, score: int,
     for skill_code in affected_skills:
         recalculate_skill_mastery(student_id, skill_code)
 
+    level_update = evaluate_and_update_level(student_id)
+
     return {
         "submission_id": submission_id,
         "attempts_count": len(attempts),
         "overwritten": True,
+        "level_update": level_update,
     }
 
 

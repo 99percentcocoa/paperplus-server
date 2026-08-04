@@ -24,7 +24,7 @@ from .worksheets import create_worksheet, check_test, get_worksheet, get_workshe
 from .questions import insert_questions_for_worksheet, get_questions_for_worksheet, get_question
 from .submissions import create_submission, get_submission, get_submissions_for_worksheet, get_latest_submission, get_latest_submission_by_worksheet, overwrite_submission
 from .attempts import insert_attempts, delete_attempts_for_submission, get_attempts_for_submission
-from .mastery import update_skill_mastery, get_skill_mastery, recalculate_skill_mastery
+from .mastery import update_skill_mastery, get_skill_mastery, recalculate_skill_mastery, get_level_mastery_average, get_level_skill_coverage, determine_level_change, evaluate_and_update_level
 from .media import create_media, get_media
 
 __all__ = [
@@ -78,6 +78,10 @@ __all__ = [
     "update_skill_mastery",
     "get_skill_mastery",
     "recalculate_skill_mastery",
+    "get_level_mastery_average",
+    "get_level_skill_coverage",
+    "determine_level_change",
+    "evaluate_and_update_level",
     # Media
     "create_media",
     "get_media",
