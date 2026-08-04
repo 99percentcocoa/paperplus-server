@@ -41,20 +41,10 @@ CREATE TABLE IF NOT EXISTS questions (
     question_json jsonb
 );
 
--- assignments
-CREATE TABLE IF NOT EXISTS assignments (
-    assignment_id serial PRIMARY KEY,
-    student_id text REFERENCES students(student_id),
-    worksheet_id integer REFERENCES worksheets(worksheet_id) ON DELETE CASCADE,
-    assigned_at timestamp with time zone DEFAULT now(),
-    submitted_at timestamp with time zone DEFAULT NULL
-);
-
 -- submissions
 CREATE TABLE IF NOT EXISTS submissions (
     submission_id serial PRIMARY KEY,
     student_id text NOT NULL REFERENCES students(student_id),
-    assignment_id integer NOT NULL REFERENCES assignments(assignment_id) ON DELETE SET NULL,
     worksheet_id integer NOT NULL REFERENCES worksheets(worksheet_id),
     score integer,
     from_number text,
