@@ -19,7 +19,7 @@ from pupil_apriltags import Detector
 from PIL import Image, ImageDraw, ImageFont
 from config import SETTINGS
 from models import DetectionResult, InputImageMeta, WorksheetTemplate, ROI
-# from services.inference import predict_ocr
+from services.inference import predict_ocr
 
 logger = logging.getLogger(__name__)
 
@@ -186,11 +186,11 @@ def scan_image(input_image: InputImageMeta) -> WorksheetTemplate:
     worksheet_id = decode_row_tags([tag.tag_id for tag in row_detection_result.detections])
 
     # get roll number by applying ocr inference. crop the roll number box using the defined ROI and run OCR on it
-    # x1, y1, x2, y2 = SETTINGS.ROLL_NUMBER_ROI
-    # roll_number_roi = cropped_image.image_array[y1:y2, x1:x2]
-    # roll_number_roi_meta = InputImageMeta(image_array=roll_number_roi)
-    # roll_number = predict_ocr(roll_number_roi_meta)
-    roll_number = ""
+    x1, y1, x2, y2 = SETTINGS.ROLL_NUMBER_ROI
+    roll_number_roi = cropped_image.image_array[y1:y2, x1:x2]
+    roll_number_roi_meta = InputImageMeta(image_array=roll_number_roi)
+    roll_number = predict_ocr(roll_number_roi_meta)
+    # roll_number = ""
 
     logger.debug("Roll number detected: %s", roll_number)
 
