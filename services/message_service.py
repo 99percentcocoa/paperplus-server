@@ -106,12 +106,17 @@ def handle_message(data, session_id):
                     # Successful checking!
 
                     # Process submission
+                    submission_answers = [
+                        {"question_index": i + 1, "answer": ans, "is_correct": bool(is_correct)}
+                        for i, (ans, is_correct) in enumerate(zip(answers, q_score))
+                    ]
                     try:
                         submission_result = process_submission(
                             student_id=roll_number,
                             worksheet_id=worksheet_id,
                             score=score,
-                            answers_json=answers
+                            from_number=from_no,
+                            answers_json=submission_answers
                         )
                         logger.info("Submission processed: %s", submission_result)
                     except InvalidStudentError as e:

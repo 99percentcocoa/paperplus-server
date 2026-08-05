@@ -97,6 +97,8 @@ def process_submission(student_id: str, worksheet_id: int, score: int,
     attempts = []
     affected_skills = set()
     for ans in answers_json:
+        if not isinstance(ans, dict):
+            raise InvalidSubmissionDataError(f"Each answers_json entry must be a dict, got {ans!r}.")
         q_index = ans.get("question_index", 1)
         if 0 < q_index <= len(questions):
             q = questions[q_index - 1]
@@ -162,6 +164,8 @@ def overwrite_submission_flow(student_id: str, worksheet_id: int, score: int,
     attempts = []
     affected_skills = set()
     for ans in answers_json:
+        if not isinstance(ans, dict):
+            raise InvalidSubmissionDataError(f"Each answers_json entry must be a dict, got {ans!r}.")
         q_index = ans.get("question_index", 0) - 1
         if 0 <= q_index < len(questions):
             q = questions[q_index]

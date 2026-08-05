@@ -1,7 +1,11 @@
 """Student skill mastery tracking."""
 
+import logging
+
 from .connection import get_connection
 from .students import get_student, update_student_level
+
+logger = logging.getLogger(__name__)
 
 # Worksheet levels A-G map onto skill difficulty levels 1-7 respectively;
 # each worksheet level's dominant (50%-weighted) skill tier drives traversal.
@@ -123,6 +127,15 @@ def evaluate_and_update_level(student_id: str) -> dict | None:
         return None
 
     current_level = student["current_level"]
+    if current_level not in LEVEL_ORDER:
+        # Student was never initialized with a level; default to the base level.
+        logger.info(
+            "Student %s has no level assigned (was %r); defaulting to level 'A'.",
+            student_id, current_level,
+        )
+        current_level = "A"
+        update_student_level(student_id, current_level)
+
     avg_mastery = get_level_mastery_average(student_id, current_level)
     attempted, total = get_level_skill_coverage(student_id, current_level)
     full_coverage = total > 0 and attempted >= total
@@ -130,6 +143,11 @@ def evaluate_and_update_level(student_id: str) -> dict | None:
 
     if new_level != current_level:
         update_student_level(student_id, new_level)
+
+    logger.info(
+        "Level recalculation for student %s: %s -> %s (avg_mastery=%s, skills_attempted=%s/%s, changed=%s)",
+        student_id, current_level, new_level, avg_mastery, attempted, total, new_level != current_level,
+    )
 
     return {
         "student_id": student_id,
