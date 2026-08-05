@@ -5,8 +5,9 @@ These orchestrate multiple domain modules in a single logical operation.
 
 import json
 
+from models import InvalidStudentError, InvalidWorksheetError, InvalidSubmissionDataError
 from .connection import get_connection
-from .worksheets import create_worksheet, get_worksheet_json
+from .worksheets import create_worksheet, get_worksheet, get_worksheet_json
 from .questions import insert_questions_for_worksheet, get_questions_for_worksheet
 from .submissions import (
     create_submission,
@@ -15,6 +16,7 @@ from .submissions import (
 )
 from .attempts import insert_attempts, delete_attempts_for_submission
 from .mastery import recalculate_skill_mastery, evaluate_and_update_level
+from .students import get_student
 
 
 def add_worksheet_to_db(worksheet_json: dict | list,
@@ -27,8 +29,13 @@ def add_worksheet_to_db(worksheet_json: dict | list,
     2. Embed worksheet_id into the JSON
     3. Extract each question, insert into questions table
     4. Return {worksheet_id, question_ids}
+
+    Raises:
+        InvalidSubmissionDataError: if worksheet_json has no questions.
     """
     questions = worksheet_json if isinstance(worksheet_json, list) else worksheet_json.get("questions", [])
+    if not questions:
+        raise InvalidSubmissionDataError("worksheet_json must contain at least one question.")
 
     worksheet_id = create_worksheet(worksheet_json, is_test=is_test, worksheet_id=worksheet_id)
     question_ids = insert_questions_for_worksheet(worksheet_id, questions)
@@ -56,7 +63,6 @@ def add_worksheet_to_db(worksheet_json: dict | list,
     return {"worksheet_id": worksheet_id, "question_ids": question_ids}
 
 
-# note: this function does not do any checking.
 def process_submission(student_id: str, worksheet_id: int, score: int,
                        from_number: str, answers_json: list[dict]) -> dict:
     """
@@ -68,7 +74,21 @@ def process_submission(student_id: str, worksheet_id: int, score: int,
     4. Recalculate skill mastery for affected skills
     5. Re-evaluate the student's level and update it if a threshold is crossed
     6. Return {submission_id, student_id, attempts_count, level_update}
+
+    Raises:
+        InvalidStudentError: if student_id does not match a registered student.
+        InvalidWorksheetError: if worksheet_id does not match an existing worksheet.
+        InvalidSubmissionDataError: if score or answers_json is malformed.
     """
+    if get_student(student_id) is None:
+        raise InvalidStudentError(f"No registered student found for student_id '{student_id}'.")
+    if get_worksheet(worksheet_id) is None:
+        raise InvalidWorksheetError(f"No worksheet found for worksheet_id '{worksheet_id}'.")
+    if not isinstance(score, int) or score < 0:
+        raise InvalidSubmissionDataError(f"score must be a non-negative int, got {score!r}.")
+    if not isinstance(answers_json, list) or not answers_json:
+        raise InvalidSubmissionDataError("answers_json must be a non-empty list.")
+
     submission_id = create_submission(
         student_id, worksheet_id, score, from_number, answers_json
     )
@@ -114,7 +134,21 @@ def overwrite_submission_flow(student_id: str, worksheet_id: int, score: int,
     3. Overwrite submission score/answers
     4. Re-insert new attempts
     5. Recalculate mastery
+
+    Raises:
+        InvalidStudentError: if student_id does not match a registered student.
+        InvalidWorksheetError: if worksheet_id does not match an existing worksheet.
+        InvalidSubmissionDataError: if score or answers_json is malformed.
     """
+    if get_student(student_id) is None:
+        raise InvalidStudentError(f"No registered student found for student_id '{student_id}'.")
+    if get_worksheet(worksheet_id) is None:
+        raise InvalidWorksheetError(f"No worksheet found for worksheet_id '{worksheet_id}'.")
+    if not isinstance(score, int) or score < 0:
+        raise InvalidSubmissionDataError(f"score must be a non-negative int, got {score!r}.")
+    if not isinstance(answers_json, list) or not answers_json:
+        raise InvalidSubmissionDataError("answers_json must be a non-empty list.")
+
     existing = get_latest_submission_by_worksheet(worksheet_id)
     if existing is None:
         return process_submission(student_id, worksheet_id, score, "", answers_json)
@@ -159,6 +193,8 @@ def validate_sender(from_number: str) -> bool:
     """
     Check whether from_number belongs to an active user.
     """
+    if not from_number:
+        return False
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(

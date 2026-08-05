@@ -16,7 +16,8 @@ from services.grading_service import check_worksheet
 from services.logging_service import log_to_sheet
 from services.communication_service import send_image, send_message, is_valid_image_message
 from config import SETTINGS
-from models import DetectionResult, InputImageMeta, WorksheetTemplate, CornerTagDetectionError, RowTagDetectionError, RollNumberError
+from models import DetectionResult, InputImageMeta, WorksheetTemplate, CornerTagDetectionError, RowTagDetectionError, RollNumberError, InvalidStudentError, InvalidWorksheetError, InvalidSubmissionDataError
+from db import process_submission
 
 import cv2
 from PIL import Image
@@ -103,6 +104,31 @@ def handle_message(data, session_id):
 
                 if omr_success:
                     # Successful checking!
+
+                    # Process submission
+                    try:
+                        submission_result = process_submission(
+                            student_id=roll_number,
+                            worksheet_id=worksheet_id,
+                            score=score,
+                            answers_json=answers
+                        )
+                        logger.info("Submission processed: %s", submission_result)
+                    except InvalidStudentError as e:
+                        logger.debug("Invalid student_id for submission: %s", e)
+                        send_message(
+                            from_no,
+                            "Roll number not recognized. Please check and try again. ⟳ \n"
+                            "रोल नंबर ओळखता आला नाही. कृपया तपासून परत पाठवा. ⟳")
+                        return
+                    except (InvalidWorksheetError, InvalidSubmissionDataError) as e:
+                        logger.debug("Invalid worksheet/submission data: %s", e)
+                        send_message(
+                            from_no,
+                            "This worksheet could not be processed. Please try again. ⟳ \n"
+                            "ही कार्यपत्रिका तपासता आली नाही. कृपया परत प्रयत्न करा. ⟳")
+                        return
+
                     save_debug(worksheet)
                     save_checked(worksheet)
                     send_message(

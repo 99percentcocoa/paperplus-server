@@ -22,6 +22,18 @@ class RowTagDetectionError(ValueError):
 class RollNumberError(ValueError):
     """Raised when the roll number ROI or its OCR result is invalid."""
 
+
+class InvalidStudentError(ValueError):
+    """Raised when a student_id/roll number does not match a registered student."""
+
+
+class InvalidWorksheetError(ValueError):
+    """Raised when a worksheet_id does not match an existing worksheet."""
+
+
+class InvalidSubmissionDataError(ValueError):
+    """Raised when submission data (score, answers_json, etc.) is malformed."""
+
 @dataclass
 class InputImageMeta:
     """Metadata for an input image."""
