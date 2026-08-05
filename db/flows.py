@@ -4,6 +4,7 @@ These orchestrate multiple domain modules in a single logical operation.
 """
 
 import json
+import logging
 
 from models import InvalidStudentError, InvalidWorksheetError, InvalidSubmissionDataError
 from .connection import get_connection
@@ -11,12 +12,15 @@ from .worksheets import create_worksheet, get_worksheet, get_worksheet_json
 from .questions import insert_questions_for_worksheet, get_questions_for_worksheet
 from .submissions import (
     create_submission,
+    get_latest_submission,
     get_latest_submission_by_worksheet,
     overwrite_submission,
 )
 from .attempts import insert_attempts, delete_attempts_for_submission
 from .mastery import recalculate_skill_mastery, evaluate_and_update_level
 from .students import get_student
+
+logger = logging.getLogger(__name__)
 
 
 def add_worksheet_to_db(worksheet_json: dict | list,
@@ -89,9 +93,21 @@ def process_submission(student_id: str, worksheet_id: int, score: int,
     if not isinstance(answers_json, list) or not answers_json:
         raise InvalidSubmissionDataError("answers_json must be a non-empty list.")
 
-    submission_id = create_submission(
-        student_id, worksheet_id, score, from_number, answers_json
-    )
+    # A resubmission of the same worksheet overwrites the prior attempt rather than
+    # adding new ones, so mastery scores aren't skewed by repeated submissions.
+    existing = get_latest_submission(student_id, worksheet_id)
+    if existing is not None:
+        logger.info(
+            "Student %s resubmitted worksheet %s; overwriting submission %s instead of duplicating attempts.",
+            student_id, worksheet_id, existing["submission_id"],
+        )
+        submission_id = existing["submission_id"]
+        delete_attempts_for_submission(submission_id)
+        overwrite_submission(submission_id, score, answers_json)
+    else:
+        submission_id = create_submission(
+            student_id, worksheet_id, score, from_number, answers_json
+        )
 
     questions = get_questions_for_worksheet(worksheet_id)
     attempts = []

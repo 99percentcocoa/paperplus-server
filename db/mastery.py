@@ -127,7 +127,7 @@ def evaluate_and_update_level(student_id: str) -> dict | None:
         return None
 
     current_level = student["current_level"]
-    if current_level not in LEVEL_ORDER:
+    if current_level is None or current_level not in LEVEL_ORDER:
         # Student was never initialized with a level; default to the base level.
         logger.info(
             "Student %s has no level assigned (was %r); defaulting to level 'A'.",
