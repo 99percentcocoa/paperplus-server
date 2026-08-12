@@ -1,3 +1,4 @@
+import logging
 import json
 import argparse
 from pathlib import Path
@@ -10,6 +11,8 @@ TEMPLATES_PATH = SETTINGS.TEMPLATES_PATH
 PDF_WRITE_PATH = SETTINGS.PDF_WRITE_PATH
 WORKSHEET_JSON_PATH = SETTINGS.WORKSHEET_JSON_PATH
 HTML_BASE_DIR = SETTINGS.HTML_BASE_DIR
+
+logger = logging.getLogger(__name__)
 
 # python3 worksheet_pdf_generator.py --worksheet-id 1 --worksheet-json-filename en_level_A.json
 
