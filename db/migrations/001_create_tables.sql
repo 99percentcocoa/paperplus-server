@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS worksheets (
     worksheet_id serial PRIMARY KEY,
     worksheet_level text,
     is_test boolean NOT NULL DEFAULT false,
+    worksheet_category text NOT NULL DEFAULT 'practice' CHECK (worksheet_category IN ('practice', 'homework')),
     max_score integer,
     lang text,
     worksheet_json jsonb
@@ -46,6 +47,7 @@ CREATE TABLE IF NOT EXISTS submissions (
     submission_id serial PRIMARY KEY,
     student_id text NOT NULL REFERENCES students(student_id),
     worksheet_id integer NOT NULL REFERENCES worksheets(worksheet_id),
+    worksheet_category text NOT NULL DEFAULT 'practice' CHECK (worksheet_category IN ('practice', 'homework')),
     score integer,
     from_number text,
     answers_json jsonb,

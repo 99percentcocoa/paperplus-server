@@ -6,17 +6,20 @@ from .connection import get_connection
 
 
 def create_submission(student_id: str, worksheet_id: int,
-                      score: int, from_number: str, answers_json: dict | list) -> int:
+                      score: int, from_number: str, answers_json: dict | list,
+                      worksheet_category: str = None) -> int:
     """Record a graded submission. Returns submission_id."""
+    if worksheet_category is None:
+        worksheet_category = "practice"
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """INSERT INTO submissions
-                       (student_id, worksheet_id, score, from_number, answers_json)
-                   VALUES (%s, %s, %s, %s, %s)
+                       (student_id, worksheet_id, score, from_number, answers_json, worksheet_category)
+                   VALUES (%s, %s, %s, %s, %s, %s)
                    RETURNING submission_id""",
                 (student_id, worksheet_id, score, from_number,
-                 json.dumps(answers_json)),
+                 json.dumps(answers_json), worksheet_category),
             )
             return cur.fetchone()["submission_id"]
 
@@ -28,13 +31,17 @@ def get_submission(submission_id: int) -> dict | None:
             return cur.fetchone()
 
 
-def get_submissions_for_worksheet(worksheet_id: int, student_id: str = None) -> list[dict]:
-    """Find submissions for a worksheet, optionally filtered by student."""
+def get_submissions_for_worksheet(worksheet_id: int, student_id: str = None,
+                                 worksheet_category: str = None) -> list[dict]:
+    """Find submissions for a worksheet, optionally filtered by student or category."""
     clauses = ["worksheet_id = %s"]
     params = [worksheet_id]
     if student_id:
         clauses.append("student_id = %s")
         params.append(student_id)
+    if worksheet_category:
+        clauses.append("worksheet_category = %s")
+        params.append(worksheet_category)
     where = "WHERE " + " AND ".join(clauses)
     with get_connection() as conn:
         with conn.cursor() as cur:

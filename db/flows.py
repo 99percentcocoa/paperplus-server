@@ -25,7 +25,8 @@ logger = logging.getLogger(__name__)
 
 def add_worksheet_to_db(worksheet_json: dict | list,
                         is_test: bool = False,
-                        worksheet_id: int = None) -> dict:
+                        worksheet_id: int = None,
+                        worksheet_category: str = "practice") -> dict:
     """
     Full flow: "add a new worksheet to the database"
 
@@ -41,7 +42,12 @@ def add_worksheet_to_db(worksheet_json: dict | list,
     if not questions:
         raise InvalidSubmissionDataError("worksheet_json must contain at least one question.")
 
-    worksheet_id = create_worksheet(worksheet_json, is_test=is_test, worksheet_id=worksheet_id)
+    worksheet_id = create_worksheet(
+        worksheet_json,
+        is_test=is_test,
+        worksheet_id=worksheet_id,
+        worksheet_category=worksheet_category,
+    )
     question_ids = insert_questions_for_worksheet(worksheet_id, questions)
 
     # Update the stored JSON with worksheet_id and question_ids
@@ -95,6 +101,9 @@ def process_submission(student_id: str, worksheet_id: int, score: int,
 
     # A resubmission of the same worksheet overwrites the prior attempt rather than
     # adding new ones, so mastery scores aren't skewed by repeated submissions.
+    worksheet_row = get_worksheet(worksheet_id)
+    worksheet_category = (worksheet_row or {}).get("worksheet_category", "practice")
+
     existing = get_latest_submission(student_id, worksheet_id)
     if existing is not None:
         logger.info(
@@ -106,7 +115,12 @@ def process_submission(student_id: str, worksheet_id: int, score: int,
         overwrite_submission(submission_id, score, answers_json)
     else:
         submission_id = create_submission(
-            student_id, worksheet_id, score, from_number, answers_json
+            student_id,
+            worksheet_id,
+            score,
+            from_number,
+            answers_json,
+            worksheet_category=worksheet_category,
         )
 
     questions = get_questions_for_worksheet(worksheet_id)

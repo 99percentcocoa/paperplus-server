@@ -5,13 +5,17 @@ import json
 from .connection import get_connection
 
 
-def create_worksheet(worksheet_json: dict, is_test: bool = False, worksheet_id: int = None) -> int:
+def create_worksheet(worksheet_json: dict, is_test: bool = False,
+                    worksheet_id: int = None,
+                    worksheet_category: str = "practice") -> int:
     """Insert a new worksheet row and return the worksheet_id.
 
-    If *worksheet_id* is supplied the row is inserted with that exact ID and
-    the serial sequence is advanced to MAX(worksheet_id) so subsequent
-    auto-generated IDs never collide with it.
+    *worksheet_category* separates classroom practice sheets from homework sheets.
+    Supported values: "practice" and "homework".
     """
+    if worksheet_category not in {"practice", "homework"}:
+        raise ValueError("worksheet_category must be 'practice' or 'homework'")
+
     lang = worksheet_json.get("language")
     level = worksheet_json.get("level")
     title = worksheet_json.get("title")
@@ -20,10 +24,10 @@ def create_worksheet(worksheet_json: dict, is_test: bool = False, worksheet_id: 
         with conn.cursor() as cur:
             if worksheet_id is not None:
                 cur.execute(
-                    """INSERT INTO worksheets (worksheet_id, worksheet_level, is_test, max_score, lang, worksheet_json)
-                       VALUES (%s, %s, %s, %s, %s, %s)
+                    """INSERT INTO worksheets (worksheet_id, worksheet_level, is_test, worksheet_category, max_score, lang, worksheet_json)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s)
                        RETURNING worksheet_id""",
-                    (worksheet_id, level, is_test, max_score, lang, json.dumps(worksheet_json)),
+                    (worksheet_id, level, is_test, worksheet_category, max_score, lang, json.dumps(worksheet_json)),
                 )
                 inserted_id = cur.fetchone()["worksheet_id"]
                 # Keep the sequence in sync so future auto-IDs don't collide.
@@ -36,10 +40,10 @@ def create_worksheet(worksheet_json: dict, is_test: bool = False, worksheet_id: 
                 return inserted_id
             else:
                 cur.execute(
-                    """INSERT INTO worksheets (worksheet_level, is_test, max_score, lang, worksheet_json)
-                       VALUES (%s, %s, %s, %s, %s)
+                    """INSERT INTO worksheets (worksheet_level, is_test, worksheet_category, max_score, lang, worksheet_json)
+                       VALUES (%s, %s, %s, %s, %s, %s)
                        RETURNING worksheet_id""",
-                    (level, is_test, max_score, lang, json.dumps(worksheet_json)),
+                    (level, is_test, worksheet_category, max_score, lang, json.dumps(worksheet_json)),
                 )
                 return cur.fetchone()["worksheet_id"]
 
@@ -76,7 +80,9 @@ def get_answer_key(worksheet_id: int) -> list | None:
     return [q["correct_option"] for q in questions]
 
 
-def list_worksheets(level: str = None, lang: str = None, is_test: bool = None) -> list[dict]:
+def list_worksheets(level: str = None, lang: str = None,
+                   is_test: bool = None,
+                   worksheet_category: str = None) -> list[dict]:
     """List worksheets with optional filters."""
     clauses, params = [], []
     if level:
@@ -88,6 +94,9 @@ def list_worksheets(level: str = None, lang: str = None, is_test: bool = None) -
     if is_test is not None:
         clauses.append("is_test = %s")
         params.append(is_test)
+    if worksheet_category:
+        clauses.append("worksheet_category = %s")
+        params.append(worksheet_category)
     where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
     with get_connection() as conn:
         with conn.cursor() as cur:
