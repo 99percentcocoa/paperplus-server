@@ -86,6 +86,8 @@ def generate_worksheet_pdf(
         .replace("{{tags_html}}", tags_html)
         .replace("{{questions}}", questions_html)
         .replace("{{worksheet_id}}", str(worksheet_id))
+        .replace("{{level}}", worksheet.get("level", ""))
+        .replace("{{worksheet_category}}", worksheet.get("worksheet_category", "practice"))
     )
 
     # create PDF
