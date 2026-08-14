@@ -1,8 +1,8 @@
 """Generate a single worksheet at a time, for either homework or practice.
 
 Typical usage:
-  python3 batch_generate_worksheets.py --type homework --level A --language en --worksheet-id 8001
-  python3 batch_generate_worksheets.py --type practice --level D5 --language mr --worksheet-id 8002
+  python3 batch_generate_worksheets.py --type homework --level A --language en --count 5
+  python3 batch_generate_worksheets.py --type practice --level D5 --language mr --count 3
 
 Generated files are saved as:
   files/json/<worksheet_id>_<lang>.json
