@@ -1,4 +1,5 @@
 
+import logging
 from pathlib import Path
 
 from models import InputImageMeta
@@ -7,6 +8,8 @@ import numpy as np
 import cv2
 from ai_edge_litert.interpreter import Interpreter
 from PIL import Image
+
+logger = logging.getLogger(__name__)
 
 interpreter = None
 input_details = None
@@ -144,11 +147,25 @@ def predict_ocr(input_image: InputImageMeta):
     if len(img.shape) == 3 and img.shape[2] == 3:
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
-    # Perform OCR
-    result = ocr.predict(img)
-    res = result[0]
-    rec_texts = res.get("rec_texts", [])
-    rec_scores = res.get("rec_scores", [])
+    # Perform OCR. PaddleOCR can occasionally throw a native C++ runtime error
+    # on a malformed or edge-case ROI. Treat that as "no valid text" so a
+    # higher-level RollNumberError can be raised cleanly instead of crashing the
+    # background webhook thread.
+    try:
+        result = ocr.predict(img)
+    except RuntimeError as exc:
+        logger.warning("OCR runtime failure on input image: %s", exc)
+        return ""
+    except Exception as exc:  # pragma: no cover - defensive fallback
+        logger.warning("OCR prediction failed unexpectedly: %s", exc)
+        return ""
+
+    try:
+        res = result[0]
+        rec_texts = res.get("rec_texts", [])
+        rec_scores = res.get("rec_scores", [])
+    except (IndexError, TypeError, AttributeError):
+        return ""
 
     # get the rec_text corresponding to the highest rec_score
     if rec_texts and rec_scores:
@@ -157,4 +174,4 @@ def predict_ocr(input_image: InputImageMeta):
         best_score = rec_scores[max_score_index]
         return best_text
 
-    return []
+    return ""
