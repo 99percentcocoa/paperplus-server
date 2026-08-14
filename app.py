@@ -24,11 +24,13 @@ Environment Variables Required:
 """
 
 from flask import Flask
+from db import run_migrations
 from routes.webhook_routes import webhook_bp
 from routes.file_routes import file_bp
 from routes.dashboard_routes import dashboard_bp
 
 app = Flask(__name__)
+run_migrations()
 
 # Register blueprints
 app.register_blueprint(webhook_bp)
