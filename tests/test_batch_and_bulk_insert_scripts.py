@@ -26,6 +26,18 @@ class BatchAndBulkInsertScriptTests(unittest.TestCase):
             {"theme": "D", "level": 5, "worksheet_category": "practice"},
         )
 
+    def test_batch_generate_supports_multiple_sheets_per_level(self):
+        batch = load_module("batch_generate_worksheets", ROOT / "batch_generate_worksheets.py")
+
+        self.assertEqual(
+            batch.build_output_filename("en", "homework", "A", worksheet_id=8001, index=0),
+            "8001_en.json",
+        )
+        self.assertEqual(
+            batch.build_output_filename("en", "homework", "A", worksheet_id=None, index=3),
+            "en_homework_A_3.json",
+        )
+
     def test_bulk_insert_detects_generated_filenames(self):
         bulk = load_module("bulk_insert_worksheets", ROOT / "bulk_insert_worksheets.py")
 
@@ -44,6 +56,10 @@ class BatchAndBulkInsertScriptTests(unittest.TestCase):
         self.assertEqual(
             bulk.parse_generated_filename("mr_homework_A.json"),
             {"worksheet_id": None, "language": "mr", "worksheet_category": "homework"},
+        )
+        self.assertEqual(
+            bulk.parse_generated_filename("en_homework_A_3.json"),
+            {"worksheet_id": None, "language": "en", "worksheet_category": "homework"},
         )
 
 

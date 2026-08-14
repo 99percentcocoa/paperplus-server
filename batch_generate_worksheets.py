@@ -75,16 +75,18 @@ def build_worksheet_json(level: str, language: str, worksheet_type: str, title: 
     )
 
 
-def build_output_filename(language: str, worksheet_type: str, level: str, worksheet_id: int | None = None) -> str:
+def build_output_filename(language: str, worksheet_type: str, level: str, worksheet_id: int | None = None, index: int | None = None) -> str:
     """Return the JSON filename used for a generated sheet."""
     if worksheet_id is not None:
         return f"{worksheet_id}_{language}.json"
     level_label = str(level).strip().upper()
-    return f"{language}_{worksheet_type}_{level_label}.json"
+    if index is None:
+        return f"{language}_{worksheet_type}_{level_label}.json"
+    return f"{language}_{worksheet_type}_{level_label}_{index}.json"
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Generate a single worksheet for practice or homework.")
+    parser = argparse.ArgumentParser(description="Generate one or many worksheets for practice or homework.")
     parser.add_argument("--type", dest="worksheet_type", choices=["practice", "homework"], default="homework",
                         help="Worksheet category to generate.")
     parser.add_argument("--level", required=True,
@@ -93,44 +95,54 @@ def main() -> None:
                         help="Worksheet language.")
     parser.add_argument("--worksheet-id", type=int, default=None,
                         help="Optional numeric worksheet ID. If omitted, the database assigns the next available ID.")
+    parser.add_argument("--count", type=int, default=1,
+                        help="How many worksheets to generate for this level. Default: 1.")
     parser.add_argument("--title", default=None,
                         help="Optional title override for the worksheet JSON.")
     args = parser.parse_args()
 
+    if args.count < 1:
+        raise ValueError("--count must be at least 1")
+
     JSON_DIR.mkdir(parents=True, exist_ok=True)
     PDF_DIR.mkdir(parents=True, exist_ok=True)
 
-    worksheet_json = build_worksheet_json(
-        level=args.level,
-        language=args.language,
-        worksheet_type=args.worksheet_type,
-        title=args.title,
-    )
+    for index in range(args.count):
+        worksheet_json = build_worksheet_json(
+            level=args.level,
+            language=args.language,
+            worksheet_type=args.worksheet_type,
+            title=args.title,
+        )
 
-    output_worksheet_id = args.worksheet_id
-    if output_worksheet_id is None:
-        output_worksheet_id = PLACEHOLDER_WORKSHEET_ID
+        output_worksheet_id = args.worksheet_id
+        if output_worksheet_id is None:
+            output_worksheet_id = PLACEHOLDER_WORKSHEET_ID
 
-    json_filename = build_output_filename(
-        language=args.language,
-        worksheet_type=args.worksheet_type,
-        level=worksheet_json.get("level", args.level),
-        worksheet_id=args.worksheet_id,
-    )
-    json_filepath = JSON_DIR / json_filename
-    pdf_filepath = PDF_DIR / json_filename.replace(".json", ".pdf")
+        json_filename = build_output_filename(
+            language=args.language,
+            worksheet_type=args.worksheet_type,
+            level=worksheet_json.get("level", args.level),
+            worksheet_id=args.worksheet_id,
+            index=index if args.worksheet_id is None else None,
+        )
+        json_filepath = JSON_DIR / json_filename
+        pdf_filepath = PDF_DIR / json_filename.replace(".json", ".pdf")
 
-    save_worksheet(worksheet_json, str(json_filepath))
-    generate_worksheet_pdf(
-        worksheet_id=output_worksheet_id,
-        worksheet_json_filename=json_filename,
-        output_path=str(pdf_filepath),
-    )
+        save_worksheet(worksheet_json, str(json_filepath))
+        generate_worksheet_pdf(
+            worksheet_id=output_worksheet_id,
+            worksheet_json_filename=json_filename,
+            output_path=str(pdf_filepath),
+        )
 
-    display_id = args.worksheet_id if args.worksheet_id is not None else "auto"
-    print(f"Generated {args.worksheet_type} worksheet id={display_id} level={worksheet_json.get('level')} lang={args.language}")
-    print(f"JSON: {json_filepath}")
-    print(f"PDF:  {pdf_filepath}")
+        display_id = args.worksheet_id if args.worksheet_id is not None else "auto"
+        print(f"Generated {args.worksheet_type} worksheet #{index + 1}/{args.count} id={display_id} level={worksheet_json.get('level')} lang={args.language}")
+        print(f"JSON: {json_filepath}")
+        print(f"PDF:  {pdf_filepath}")
+
+        if args.worksheet_id is not None:
+            args.worksheet_id += 1
 
 
 if __name__ == "__main__":

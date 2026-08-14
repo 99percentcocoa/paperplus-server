@@ -26,7 +26,7 @@ JSON_DIR = REPO_ROOT / "files" / "json"
 FILENAME_RE = re.compile(
     r"^(?:"
     r"(?P<worksheet_id>\d+)_(?P<language>[a-z]{2})|"
-    r"(?P<language2>[a-z]{2})_(?P<category>practice|homework)_(?P<level>.+)|"
+    r"(?P<language2>[a-z]{2})_(?P<category>practice|homework)_(?P<level>.+?)(?:_(?P<index>\d+))?|"
     r"(?P<category2>homework|practice)_(?P<level2>.+)|"
     r"(?P<worksheet_id2>\d+)_(?P<language3>[a-z]{2})_(?P<category3>practice|homework)"
     r")\.json$"
