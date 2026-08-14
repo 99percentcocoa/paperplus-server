@@ -87,10 +87,20 @@ def handle_message(data, session_id):
                         "Could not read the roll number clearly. Please retake the photo. ⟳ \n"
                         "रोल नंबर नीट वाचता आला नाही. कृपया फोटो परत काढा. ⟳")
                     return
-                    # send_message(
-                    #     from_no,
-                    #     "Please take a complete photo of the worksheet. ⟳ \n"
-                    #     "कृपया कार्यपत्रिका संपूर्ण दिसेल असा फोटो काढा. ⟳")
+                except RuntimeError as e:
+                    # Native OCR/runtime failures from OpenCV/Paddle can occur on noisy or partial images.
+                    logger.exception("Runtime failure while scanning worksheet: %s", e)
+                    send_message(
+                        from_no,
+                        "The worksheet could not be read properly. Please try again. ⟳ \n"
+                        "कार्यपत्रिका नीट वाचता आली नाही. कृपया पुन्हा प्रयत्न करा. ⟳")
+                    return
+                except Exception as e:
+                    logger.exception("Unexpected failure while scanning worksheet: %s", e)
+                    send_message(
+                        from_no,
+                        "Please try again. ⟳ \n कृपया पुन्हा प्रयत्न करा. ⟳")
+                    return
 
                 # Save preprocessed image to correct file path for later access
                 save_preprocessed(worksheet)
