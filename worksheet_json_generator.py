@@ -353,7 +353,7 @@ def create_worksheet_level_distribution(worksheet_level: str) -> dict:
     return skill_distribution
 
 
-def worksheet_to_json(name: str, worksheet: list, level: str, language: str) -> dict:
+def worksheet_to_json(name: str, worksheet: list, level: str, language: str, worksheet_category: str = "practice") -> dict:
     """
     Convert worksheet to JSON-serializable object.
     
@@ -361,7 +361,7 @@ def worksheet_to_json(name: str, worksheet: list, level: str, language: str) -> 
         worksheet: List of Question objects
     
     Returns:
-        Worksheet object with title, level, language, and questions.
+        Worksheet object with title, level, language, questions, and category.
     """
     questions = []
     answer_key = []
@@ -383,6 +383,7 @@ def worksheet_to_json(name: str, worksheet: list, level: str, language: str) -> 
         "title": name,
         "level": level,
         "language": language,
+        "worksheet_category": worksheet_category,
         "questions": questions
     }
 
@@ -399,7 +400,7 @@ def save_worksheet(worksheet_data: dict, filepath: str = "worksheet.json"):
         json.dump(worksheet_data, f, indent=2, ensure_ascii=False)
     print(f"Worksheet saved to {filepath}")
 
-def create_worksheet_json(title: str, level: str, language: str) -> dict:
+def create_worksheet_json(title: str, level: str, language: str, worksheet_category: str = "practice") -> dict:
     """
     Create a worksheet JSON structure from level and language.
     
@@ -407,13 +408,23 @@ def create_worksheet_json(title: str, level: str, language: str) -> dict:
         title: Title of the worksheet
         level: Worksheet level (A-G)
         language: Language code (e.g., "en", "mr")
+        worksheet_category: worksheet type, usually 'practice' or 'homework'
     
     Returns:
         Worksheet object as per worksheet JSON schema.
     """
+    if worksheet_category not in {"practice", "homework"}:
+        raise ValueError("worksheet_category must be 'practice' or 'homework'")
+
     distribution = create_worksheet_level_distribution(level)
     worksheet = create_worksheet(skill_distribution=distribution, language=language)
-    worksheet_json = worksheet_to_json(name=title, worksheet=worksheet, level=level, language=language)
+    worksheet_json = worksheet_to_json(
+        name=title,
+        worksheet=worksheet,
+        level=level,
+        language=language,
+        worksheet_category=worksheet_category,
+    )
     return worksheet_json
 
 
@@ -429,7 +440,13 @@ def create_practice_worksheet_json(title: str, theme: str, level: int | str, lan
     level_label = f"{theme}{level}"
     distribution = create_practice_worksheet_level_distribution(theme, level)
     worksheet = create_worksheet(skill_distribution=distribution, language=language)
-    worksheet_json = worksheet_to_json(name=title, worksheet=worksheet, level=level_label, language=language)
+    worksheet_json = worksheet_to_json(
+        name=title,
+        worksheet=worksheet,
+        level=level_label,
+        language=language,
+        worksheet_category="practice",
+    )
     return worksheet_json
 
 
@@ -510,6 +527,7 @@ if __name__ == "__main__":
             title=f"Worksheet Level {level}",
             level=level,
             language=args.language,
+            worksheet_category="homework",
         )
 
         if args.filename:
