@@ -216,6 +216,38 @@
     "dependencies": ""
   },
   {
+    "code": "2D1R",
+    "difficulty_level": "5",
+    "skill": "2/1 division with remainder",
+    "example": "23/5",
+    "misconceptions": "make an off-by-one error,\nmake mistakes while adding or subtracting during division",
+    "dependencies": "2D1"
+  },
+  {
+    "code": "3D1R",
+    "difficulty_level": "5",
+    "skill": "3/1 division with remainder",
+    "example": "123/5",
+    "misconceptions": "make an off-by-one error,\nmake mistakes while adding or subtracting during division",
+    "dependencies": "3D1"
+  },
+  {
+    "code": "3D1Z",
+    "difficulty_level": "5",
+    "skill": "3/1 division with zero in quotient",
+    "example": "202/2",
+    "misconceptions": "make an off-by-one error,\nforget that the middle quotient digit can be zero",
+    "dependencies": "3D1"
+  },
+  {
+    "code": "4D1R",
+    "difficulty_level": "5",
+    "skill": "4/1 division with remainder",
+    "example": "1234/5",
+    "misconceptions": "make an off-by-one error,\nmake mistakes while adding or subtracting during division",
+    "dependencies": "3D1R"
+  },
+  {
     "code": "2M2C",
     "difficulty_level": "6",
     "skill": "2x2 multiplication - carry",
