@@ -37,6 +37,14 @@ class BatchAndBulkInsertScriptTests(unittest.TestCase):
             bulk.parse_generated_filename("8002_mr.json"),
             {"worksheet_id": 8002, "language": "mr", "worksheet_category": None},
         )
+        self.assertEqual(
+            bulk.parse_generated_filename("en_practice_D5.json"),
+            {"worksheet_id": None, "language": "en", "worksheet_category": "practice"},
+        )
+        self.assertEqual(
+            bulk.parse_generated_filename("mr_homework_A.json"),
+            {"worksheet_id": None, "language": "mr", "worksheet_category": "homework"},
+        )
 
 
 if __name__ == "__main__":

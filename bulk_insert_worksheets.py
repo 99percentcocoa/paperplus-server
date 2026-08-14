@@ -23,7 +23,14 @@ from db.flows import add_worksheet_to_db
 from db.worksheets import get_worksheet
 
 JSON_DIR = REPO_ROOT / "files" / "json"
-FILENAME_RE = re.compile(r"^(?:(?P<worksheet_id>\d+)_(?P<language>[a-z]{2})|(?P<language2>[a-z]{2})_(?P<category>practice|homework)_(?P<level>.+)|(?P<worksheet_id2>\d+)_(?P<language3>[a-z]{2})_(?P<category2>practice|homework))\.json$")
+FILENAME_RE = re.compile(
+    r"^(?:"
+    r"(?P<worksheet_id>\d+)_(?P<language>[a-z]{2})|"
+    r"(?P<language2>[a-z]{2})_(?P<category>practice|homework)_(?P<level>.+)|"
+    r"(?P<category2>homework|practice)_(?P<level2>.+)|"
+    r"(?P<worksheet_id2>\d+)_(?P<language3>[a-z]{2})_(?P<category3>practice|homework)"
+    r")\.json$"
+)
 
 
 def parse_generated_filename(filename: str) -> dict:
@@ -44,10 +51,13 @@ def parse_generated_filename(filename: str) -> dict:
     elif match.group("language2"):
         data["language"] = match.group("language2")
         data["worksheet_category"] = match.group("category")
+    elif match.group("category2"):
+        data["worksheet_category"] = match.group("category2")
+        data["language"] = None
     elif match.group("worksheet_id2"):
         data["worksheet_id"] = int(match.group("worksheet_id2"))
         data["language"] = match.group("language3")
-        data["worksheet_category"] = match.group("category2")
+        data["worksheet_category"] = match.group("category3")
 
     return data
 
@@ -120,10 +130,8 @@ def main() -> None:
                 with open(json_path, "r", encoding="utf-8") as f:
                     worksheet_json = json.load(f)
                 worksheet_id = worksheet_json.get("worksheet_id")
-            if worksheet_id is None:
-                raise ValueError(f"No worksheet_id found in filename or JSON for {filename}")
 
-            if not args.force and not args.dry_run and worksheet_exists(int(worksheet_id)):
+            if worksheet_id is not None and not args.force and not args.dry_run and worksheet_exists(int(worksheet_id)):
                 print(f"[SKIP]     {filename}  →  worksheet_id={worksheet_id}  (already in DB)")
                 skipped += 1
                 continue
@@ -133,13 +141,14 @@ def main() -> None:
 
             category = infer_worksheet_category(worksheet_json, filename)
             if args.dry_run:
-                print(f"[DRY-RUN]  {filename}  →  worksheet_id={worksheet_id}  category={category}")
+                target_id = worksheet_id if worksheet_id is not None else "auto"
+                print(f"[DRY-RUN]  {filename}  →  worksheet_id={target_id}  category={category}")
                 inserted += 1
                 continue
 
             result = add_worksheet_to_db(
                 worksheet_json,
-                worksheet_id=int(worksheet_id),
+                worksheet_id=int(worksheet_id) if worksheet_id is not None else None,
                 worksheet_category=category,
             )
             print(f"[OK]       {filename}  →  worksheet_id={result['worksheet_id']}  "
