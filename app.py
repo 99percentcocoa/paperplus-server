@@ -26,12 +26,14 @@ Environment Variables Required:
 from flask import Flask
 from routes.webhook_routes import webhook_bp
 from routes.file_routes import file_bp
+from routes.dashboard_routes import dashboard_bp
 
 app = Flask(__name__)
 
 # Register blueprints
 app.register_blueprint(webhook_bp)
 app.register_blueprint(file_bp)
+app.register_blueprint(dashboard_bp)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
