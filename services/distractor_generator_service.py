@@ -4,6 +4,33 @@
 import random
 
 
+def _coerce_numeric_answer(value):
+    """Normalize a correct answer value to a numeric quotient for distractor logic."""
+    if isinstance(value, tuple):
+        if len(value) == 2:
+            return int(value[0])
+        return int(value[0])
+
+    if isinstance(value, str):
+        s = value.strip().replace(" ", "")
+        if "R" in s:
+            q, sep, r = s.partition("R")
+            if sep and q and r:
+                return int(q)
+        try:
+            return int(s)
+        except ValueError as exc:
+            raise ValueError(f"Cannot convert answer to int: {value!r}") from exc
+
+    if isinstance(value, int):
+        return value
+
+    try:
+        return int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"Cannot convert answer to int: {value!r}") from exc
+
+
 def _is_non_negative_option(value):
     """Return True only for non-negative distractor candidates."""
     if isinstance(value, int):
@@ -34,7 +61,7 @@ def get_terms(question, correct_ans):
     num2 = int(terms[-1])
     if num1 < num2:
         num1, num2 = num2, num1
-    return [num1, num2, int(correct_ans)]
+    return [num1, num2, _coerce_numeric_answer(correct_ans)]
 
 # off by one distractor function
 # operations used: all except addition and subtraction
@@ -137,14 +164,14 @@ def add_wrong_place_value_addition(question, correct_ans):
 def division_errors(question, correct_ans, offsets=[-1, 1]):
     num1, num2, correct_ans = get_terms(question, correct_ans)
     distractors = set()
-    
+
     # Off-by-one errors in the quotient
     random.shuffle(offsets)
     for offset in offsets:
         distractor = int(correct_ans) + offset
         if distractor >= 0:  # quotient should be non-negative
             distractors.add(distractor)
-    
+
     # Arithmetic errors during long division steps
     # Simulate common mistakes when subtracting during division
     quotient = int(correct_ans)
@@ -285,7 +312,7 @@ def _build_non_negative_fallback_distractors(correct_ans, existing, needed=3):
     out = list(existing)
 
     if isinstance(correct_ans, str) and "R" in correct_ans:
-        q, _, r = correct_ans.partition("R")
+        q, _, r = correct_ans.strip().replace(" ", "").partition("R")
         try:
             qv = int(q)
             rv = int(r)
@@ -301,8 +328,8 @@ def _build_non_negative_fallback_distractors(correct_ans, existing, needed=3):
         ]
     else:
         try:
-            base = int(correct_ans)
-        except (TypeError, ValueError):
+            base = _coerce_numeric_answer(correct_ans)
+        except ValueError:
             base = 0
 
         seed = [base + i for i in (1, 2, 3, 4, 5, 6)]
@@ -337,7 +364,7 @@ def build_distractors(skill_code, question, correct_ans, needed=3):
     if len(possible_distractors) < needed:
         # Preserve existing numeric fallback behavior.
         try:
-            correct_val = int(correct_ans) if not isinstance(correct_ans, str) else int(correct_ans.split()[0])
+            correct_val = _coerce_numeric_answer(correct_ans)
             candidates = []
             for offset in [1, 2, 3, 4, 5, 6, 7, 8]:
                 candidates.append(correct_val + offset)

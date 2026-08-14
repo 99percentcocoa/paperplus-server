@@ -25,6 +25,122 @@ from config import SETTINGS
 # }
 WORKSHEET_LEVEL_DISTRIBUTIONS = SETTINGS.WORKSHEET_LEVEL_DISTRIBUTIONS
 
+PRACTICE_THEME_SKILLS = {
+    "A": {
+        1: ["1A", "2A1", "2A2"],
+        2: ["1AC", "2A1C", "2A2", "3A"],
+        3: ["2A1C", "2A2C", "3A", "3AC"],
+        4: ["2A2C", "3A", "3AC", "3AC2"],
+        5: ["3A", "3AC", "3AC2", "2A2C"],
+    },
+    "S": {
+        1: ["1S", "2S1"],
+        2: ["1S", "2S1", "2S2"],
+        3: ["2S1B", "2S2", "3S", "2S2B"],
+        4: ["2S1B", "2S2B", "3S", "3SB"],
+        5: ["3SB", "3SB2", "2S2B", "3S"],
+    },
+    "M": {
+        1: ["T5", "2M1"],
+        2: ["T10", "2M1", "3M1"],
+        3: ["2M1", "2M1C", "3M1", "3M1C"],
+        4: ["2M1C", "3M1C", "3M1C2", "2M2"],
+        5: ["3M1C2", "2M2", "2M2C", "3M2C"],
+    },
+    "D": {
+        1: ["2D1"],
+        2: ["2D1", "3D1"],
+        3: ["2D1", "2D1R", "3D1"],
+        4: ["2D1R", "3D1R", "3D1Z", "4D1R"],
+        5: ["2D1R", "3D1R", "3D1Z", "4D1R"],
+    },
+}
+
+
+def parse_practice_level(level_label: str) -> tuple[str, int]:
+    """Parse a practice label like 'A1' or 'M4' into (theme, level)."""
+    if not isinstance(level_label, str):
+        raise ValueError(f"Practice level must be a string, got {type(level_label).__name__}")
+
+    label = level_label.strip().upper()
+    if len(label) < 2:
+        raise ValueError(f"Invalid practice level: {level_label!r}. Expected a theme plus a level, e.g. A1 or D3.")
+
+    theme = label[0]
+    if theme not in PRACTICE_THEME_SKILLS:
+        valid = ", ".join(PRACTICE_THEME_SKILLS.keys())
+        raise ValueError(f"Invalid practice theme: {theme!r}. Must be one of: {valid}")
+
+    try:
+        level = int(label[1:])
+    except ValueError as exc:
+        raise ValueError(f"Invalid practice level: {level_label!r}. Expected a number after the theme.") from exc
+
+    if level not in range(1, 6):
+        raise ValueError(f"Practice level must be between 1 and 5, got {level}.")
+
+    return theme, level
+
+
+def _assign_questions_to_skills(skill_codes: list[str], total_questions: int) -> dict:
+    """Distribute a fixed number of questions across a skill list without leaving any unused."""
+    if not skill_codes:
+        return {}
+
+    distribution = {}
+    if len(skill_codes) == 1:
+        distribution[skill_codes[0]] = total_questions
+        return distribution
+
+    remaining = total_questions
+    for i, skill_code in enumerate(skill_codes[:-1]):
+        max_for_skill = remaining - (len(skill_codes) - i - 1)
+        count = random.randint(1, max(1, max_for_skill))
+        distribution[skill_code] = count
+        remaining -= count
+
+    distribution[skill_codes[-1]] = remaining
+    return distribution
+
+
+def create_practice_worksheet_level_distribution(theme: str, level: int | str) -> dict:
+    """Create a 20-question distribution for a practice sheet using theme + level."""
+    if isinstance(level, str):
+        theme, level = parse_practice_level(f"{theme}{level}") if not theme else parse_practice_level(level)
+    theme = theme.upper()
+    if theme not in PRACTICE_THEME_SKILLS:
+        valid = ", ".join(PRACTICE_THEME_SKILLS.keys())
+        raise ValueError(f"Invalid practice theme: {theme!r}. Must be one of: {valid}")
+
+    level = int(level)
+    if level not in range(1, 6):
+        raise ValueError(f"Practice level must be between 1 and 5, got {level}.")
+
+    current_skills = PRACTICE_THEME_SKILLS[theme][level]
+    distribution = {}
+
+    if level == 1:
+        distribution.update(_assign_questions_to_skills(current_skills, 20))
+        return distribution
+
+    previous_skills = PRACTICE_THEME_SKILLS[theme][level - 1]
+    recycled_questions = max(1, round(20 * 0.30))
+    current_questions = 20 - recycled_questions
+
+    distribution.update(_assign_questions_to_skills(previous_skills, recycled_questions))
+    current_distribution = _assign_questions_to_skills(current_skills, current_questions)
+    for skill_code, count in current_distribution.items():
+        distribution[skill_code] = distribution.get(skill_code, 0) + count
+
+    # Ensure the final total is exactly 20.
+    total = sum(distribution.values())
+    if total != 20:
+        diff = 20 - total
+        last_skill = list(distribution.keys())[-1]
+        distribution[last_skill] += diff
+
+    return distribution
+
 
 def _normalize_skills(skills_data) -> list:
     """Return a list of skill records from either dict or list input."""
@@ -301,6 +417,22 @@ def create_worksheet_json(title: str, level: str, language: str) -> dict:
     return worksheet_json
 
 
+def create_practice_worksheet_json(title: str, theme: str, level: int | str, language: str) -> dict:
+    """Create a practice worksheet JSON using the explicit theme + level system (A1..D5)."""
+    theme = str(theme).upper()
+    if isinstance(level, str):
+        parsed_theme, parsed_level = parse_practice_level(level)
+        if theme not in {parsed_theme, ""}:
+            theme = parsed_theme
+        level = parsed_level
+
+    level_label = f"{theme}{level}"
+    distribution = create_practice_worksheet_level_distribution(theme, level)
+    worksheet = create_worksheet(skill_distribution=distribution, language=language)
+    worksheet_json = worksheet_to_json(name=title, worksheet=worksheet, level=level_label, language=language)
+    return worksheet_json
+
+
 if __name__ == "__main__":
     # Usage:
     # python3 worksheet_json_generator.py --level A --language en
@@ -311,6 +443,16 @@ if __name__ == "__main__":
         "--level",
         default="A",
         help="Worksheet level (A-G). Ignored when --all-levels is set.",
+    )
+    parser.add_argument(
+        "--theme",
+        choices=["A", "S", "M", "D"],
+        help="Practice theme for a practice worksheet (A, S, M, D).",
+    )
+    parser.add_argument(
+        "--practice-level",
+        type=str,
+        help="Practice worksheet level like A1, S2, M4, or D3.",
     )
     parser.add_argument(
         "--all-levels",
@@ -341,6 +483,21 @@ if __name__ == "__main__":
 
     if args.all_levels and args.filename:
         raise ValueError("--filename cannot be used with --all-levels")
+
+    if args.practice_level:
+        theme, level = parse_practice_level(args.practice_level)
+        worksheet_json = create_practice_worksheet_json(
+            title=f"Practice Worksheet {theme}{level}",
+            theme=theme,
+            level=level,
+            language=args.language,
+        )
+        filename = args.filename if args.filename else f"{args.language}_practice_{theme}{level}.json"
+        if not filename.lower().endswith(".json"):
+            filename = f"{filename}.json"
+        save_worksheet(worksheet_json, output_dir / filename)
+        print(f"Created practice worksheet {theme}{level} with {len(worksheet_json['questions'])} questions.")
+        raise SystemExit(0)
 
     levels = "ABCDEFG" if args.all_levels else args.level.upper()
     if not args.all_levels and levels not in "ABCDEFG":
