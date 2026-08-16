@@ -26,7 +26,7 @@ from worksheet_json_generator import (
 from worksheet_pdf_generator import generate_worksheet_pdf
 
 JSON_DIR = Path(SETTINGS.WORKSHEET_JSON_PATH)
-PDF_DIR = Path(SETTINGS.PDF_WRITE_PATH, "student_test")
+PDF_DIR = Path(SETTINGS.PDF_WRITE_PATH)
 VALID_HOMEWORK_LEVELS = "ABCDEFG"
 PLACEHOLDER_WORKSHEET_ID = 0
 
@@ -101,6 +101,8 @@ def main() -> None:
                         help="How many worksheets to generate for this level. Default: 1.")
     parser.add_argument("--title", default=None,
                         help="Optional title override for the worksheet JSON.")
+    parser.add_argument("--subfolder", default=None,
+                        help="Optional subfolder under files/json and files/pdf/student_test to save the generated worksheets.")
     args = parser.parse_args()
 
     if args.count < 1:
@@ -109,7 +111,10 @@ def main() -> None:
         raise ValueError("Use either --worksheet-id or --start-id, not both.")
 
     JSON_DIR.mkdir(parents=True, exist_ok=True)
-    PDF_DIR.mkdir(parents=True, exist_ok=True)
+    pdf_output_dir = Path(SETTINGS.PDF_WRITE_PATH)
+    if args.subfolder:
+        pdf_output_dir = pdf_output_dir / args.subfolder
+    pdf_output_dir.mkdir(parents=True, exist_ok=True)
 
     current_id = args.start_id if args.start_id is not None else args.worksheet_id
     for index in range(args.count):
@@ -136,7 +141,7 @@ def main() -> None:
             if current_id is not None
             else f"{args.language}_{args.worksheet_type}_{level_label}_{index}.pdf"
         )
-        pdf_filepath = PDF_DIR / pdf_filename
+        pdf_filepath = pdf_output_dir / pdf_filename
 
         save_worksheet(worksheet_json, str(json_filepath))
         generate_worksheet_pdf(
