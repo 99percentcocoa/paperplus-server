@@ -131,7 +131,11 @@ def main() -> None:
         )
         json_filepath = JSON_DIR / json_filename
         level_label = str(worksheet_json.get("level", args.level)).strip().upper()
-        pdf_filename = f"{output_worksheet_id}_{language}_{worksheet_type}_{level_label}.pdf" if current_id is not None else f"{language}_{worksheet_type}_{level_label}_{index}.pdf"
+        pdf_filename = (
+            f"{output_worksheet_id}_{args.language}_{args.worksheet_type}_{level_label}.pdf"
+            if current_id is not None
+            else f"{args.language}_{args.worksheet_type}_{level_label}_{index}.pdf"
+        )
         pdf_filepath = PDF_DIR / pdf_filename
 
         save_worksheet(worksheet_json, str(json_filepath))
