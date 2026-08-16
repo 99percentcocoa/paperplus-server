@@ -1,13 +1,32 @@
+import hashlib
 import logging
-from weasyprint import HTML, CSS
 import json
+
 from config import SETTINGS
-from services.image_service import worksheet_id_to_rows
 
 ORIENTATION_ID = SETTINGS.ORIENTATION_ID
 TAGS_PATH = SETTINGS.TAGS_PATH
 
 logger = logging.getLogger(__name__)
+
+
+def worksheet_id_to_rows(n: int):
+    """Encode a worksheet id into the 10 row-tag values used by the PDF layout."""
+    def encode_worksheet_id_rows(value: int):
+        digits = []
+        for _ in range(5):
+            digits.append(value % 35)
+            value //= 35
+        digits.reverse()
+        return digits
+
+    def checksum(ids):
+        digest = hashlib.sha256(bytes(ids)).digest()
+        return [b % 35 for b in digest[:5]]
+
+    data_tags = encode_worksheet_id_rows(n)
+    check = checksum(data_tags)
+    return data_tags + check
 
 # opens a json worksheet file
 def open_worksheet(filename):

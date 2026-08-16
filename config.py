@@ -1,7 +1,46 @@
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
 load_dotenv()
+
+REPO_ROOT = Path(__file__).resolve().parent
+
+
+def _path_is_within_repo(candidate: Path, repo_root: Path) -> bool:
+    """Return True when a path is inside the current project checkout."""
+    try:
+        candidate.resolve().relative_to(repo_root.resolve())
+        return True
+    except ValueError:
+        return False
+
+
+def resolve_project_path(*parts: str) -> str:
+    """Return project-relative paths that work from a local checkout or Colab clone."""
+    override_root = os.getenv('PAPERPLUS_PROJECT_ROOT')
+    base_dir = Path(override_root) if override_root else REPO_ROOT
+    base_dir = base_dir.expanduser()
+    if not base_dir.is_absolute():
+        base_dir = (REPO_ROOT / base_dir).resolve()
+    return str(base_dir.joinpath(*parts).resolve())
+
+
+def resolve_config_path(env_name: str, *default_parts: str) -> str:
+    """Prefer an explicit project-root override; otherwise use the repo-local config path when valid."""
+    override_root = os.getenv('PAPERPLUS_PROJECT_ROOT')
+    if override_root:
+        return resolve_project_path(*default_parts)
+
+    raw_value = os.getenv(env_name)
+    if raw_value:
+        candidate = Path(raw_value).expanduser()
+        if not candidate.is_absolute():
+            return str((REPO_ROOT / candidate).resolve())
+        if candidate.exists() and _path_is_within_repo(candidate, REPO_ROOT):
+            return str(candidate)
+    return resolve_project_path(*default_parts)
+
 
 class Config:
     # Server
@@ -60,11 +99,11 @@ class Config:
 
     # PDF Generation
     ORIENTATION_ID = 586
-    TAGS_PATH = os.getenv('TAGS_PATH')
-    TEMPLATES_PATH = os.getenv('TEMPLATES_PATH')
-    PDF_WRITE_PATH = os.getenv('PDF_WRITE_PATH')
-    WORKSHEET_JSON_PATH = os.getenv('WORKSHEET_JSON_PATH')
-    HTML_BASE_DIR = os.getenv('HTML_BASE_DIR')
+    TAGS_PATH = resolve_config_path('TAGS_PATH', 'assets', 'tags')
+    TEMPLATES_PATH = resolve_config_path('TEMPLATES_PATH', 'assets', 'templates')
+    PDF_WRITE_PATH = resolve_config_path('PDF_WRITE_PATH', 'files', 'pdf')
+    WORKSHEET_JSON_PATH = resolve_config_path('WORKSHEET_JSON_PATH', 'files', 'json')
+    HTML_BASE_DIR = resolve_config_path('HTML_BASE_DIR', 'assets')
 
     # Database
     DATABASE_URL = os.getenv('DATABASE_URL')

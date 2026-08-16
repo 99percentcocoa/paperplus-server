@@ -16,7 +16,7 @@ from pathlib import Path
 # Run from the repo root so imports resolve.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from config import SETTINGS
+from config import SETTINGS, resolve_project_path
 from worksheet_json_generator import (
     create_worksheet_json,
     create_practice_worksheet_json,
@@ -29,6 +29,15 @@ JSON_DIR = Path(SETTINGS.WORKSHEET_JSON_PATH)
 PDF_DIR = Path(SETTINGS.PDF_WRITE_PATH)
 VALID_HOMEWORK_LEVELS = "ABCDEFG"
 PLACEHOLDER_WORKSHEET_ID = 0
+
+
+def ensure_project_directories() -> tuple[Path, Path]:
+    """Return a consistent repo-relative output layout compatible with Colab and local runs."""
+    json_dir = Path(SETTINGS.WORKSHEET_JSON_PATH) if SETTINGS.WORKSHEET_JSON_PATH else Path(resolve_project_path("files", "json"))
+    pdf_dir = Path(SETTINGS.PDF_WRITE_PATH) if SETTINGS.PDF_WRITE_PATH else Path(resolve_project_path("files", "pdf"))
+    json_dir.mkdir(parents=True, exist_ok=True)
+    pdf_dir.mkdir(parents=True, exist_ok=True)
+    return json_dir, pdf_dir
 
 
 def resolve_level_spec(level: str, worksheet_type: str) -> dict:
@@ -110,8 +119,9 @@ def main() -> None:
     if args.worksheet_id is not None and args.start_id is not None:
         raise ValueError("Use either --worksheet-id or --start-id, not both.")
 
-    JSON_DIR.mkdir(parents=True, exist_ok=True)
-    pdf_output_dir = Path(SETTINGS.PDF_WRITE_PATH)
+    json_dir, pdf_output_dir = ensure_project_directories()
+    JSON_DIR = json_dir
+    PDF_DIR = pdf_output_dir
     if args.subfolder:
         pdf_output_dir = pdf_output_dir / args.subfolder
     pdf_output_dir.mkdir(parents=True, exist_ok=True)

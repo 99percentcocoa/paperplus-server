@@ -1,6 +1,8 @@
 import importlib.util
+import os
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -61,6 +63,35 @@ class BatchAndBulkInsertScriptTests(unittest.TestCase):
             bulk.parse_generated_filename("en_homework_A_3.json"),
             {"worksheet_id": None, "language": "en", "worksheet_category": "homework"},
         )
+
+    def test_config_uses_repo_relative_paths_without_system_specific_refs(self):
+        import config
+
+        root = Path(config.__file__).resolve().parent
+        with mock.patch.dict(os.environ, {"PAPERPLUS_PROJECT_ROOT": "/tmp/colab_project"}, clear=False):
+            self.assertEqual(config.resolve_project_path("assets", "tags"), "/tmp/colab_project/assets/tags")
+            self.assertEqual(config.resolve_project_path("files", "json"), "/tmp/colab_project/files/json")
+
+        with mock.patch.dict(
+            os.environ,
+            {
+                "TAGS_PATH": str(root / "assets" / "tags"),
+                "PAPERPLUS_PROJECT_ROOT": "/tmp/colab_project",
+            },
+            clear=False,
+        ):
+            self.assertEqual(config.resolve_config_path("TAGS_PATH", "assets", "tags"), "/tmp/colab_project/assets/tags")
+
+        with mock.patch.dict(
+            os.environ,
+            {
+                "TAGS_PATH": "/home/saarang/paperplus_server/assets/tags",
+                "PAPERPLUS_PROJECT_ROOT": "/tmp/colab_project",
+            },
+            clear=False,
+        ):
+            self.assertEqual(config.resolve_config_path("TAGS_PATH", "assets", "tags"), "/tmp/colab_project/assets/tags")
+            self.assertNotIn("/home/saarang", config.resolve_config_path("TAGS_PATH", "assets", "tags"))
 
 
 if __name__ == "__main__":

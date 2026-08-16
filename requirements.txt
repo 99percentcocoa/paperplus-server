@@ -1,15 +1,2 @@
-ai-edge-litert
-Flask
-google-genai
-gunicorn
-numpy
-opencv-python
-Pillow
-pupil-apriltags
 python-dotenv
-requests
-tinydb
-psycopg[binary]
 weasyprint
-scipy
-paddleocr
