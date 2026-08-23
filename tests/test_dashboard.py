@@ -70,3 +70,30 @@ def test_dashboard_review_correct_route_exists():
     client = app.test_client()
     response = client.post('/api/dashboard/review/999/correct', json={})
     assert response.status_code in (200, 400, 404)
+
+
+def test_dashboard_health_api_returns_status_payload():
+    client = app.test_client()
+    response = client.get('/api/dashboard/health')
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert 'status' in payload
+    assert 'checked_at' in payload
+
+
+def test_message_latency_helper_works():
+    from datetime import datetime, timedelta
+    from services.message_service import update_message_latency, get_recent_message_latency
+
+    received_at = datetime.utcnow()
+    response_sent_at = received_at + timedelta(seconds=2.5)
+    update_message_latency(
+        from_number='99999',
+        received_at=received_at,
+        response_sent_at=response_sent_at,
+        status='ok',
+    )
+
+    recent = get_recent_message_latency(limit=10)
+    assert recent
+    assert recent[0]['duration_ms'] >= 2000

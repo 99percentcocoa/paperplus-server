@@ -3,13 +3,67 @@
 from __future__ import annotations
 
 import json
+import subprocess
+from datetime import datetime, timezone
 
 from flask import Blueprint, jsonify, render_template_string, request
 
 from db.connection import get_connection
+from services.message_service import get_recent_message_latency
 
 
 dashboard_bp = Blueprint("dashboard", __name__)
+
+
+def get_service_health_status():
+    """Return the host status for the PaperPlus systemd service."""
+    try:
+        completed = subprocess.run(
+            ["systemctl", "is-active", "paperplus.service"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+        status = (completed.stdout or "").strip().lower()
+        if status in {"active", "inactive", "failed", "activating", "deactivating", "unknown"}:
+            service_status = status
+        elif completed.returncode == 0:
+            service_status = "active"
+        elif completed.returncode == 3:
+            service_status = "inactive"
+        else:
+            service_status = "unknown"
+        return {
+            "status": service_status,
+            "checked_at": datetime.now(timezone.utc).isoformat(),
+            "message": "PaperPlus service is active." if service_status == "active" else "PaperPlus service is not active.",
+        }
+    except Exception:
+        return {
+            "status": "unknown",
+            "checked_at": datetime.now(timezone.utc).isoformat(),
+            "message": "Unable to determine paperplus service state.",
+        }
+
+
+@dashboard_bp.route("/api/dashboard/health", methods=["GET"])
+def dashboard_health():
+    """Return the current service health status."""
+    return jsonify(get_service_health_status())
+
+
+@dashboard_bp.route("/api/dashboard/latency", methods=["GET"])
+def dashboard_latency():
+    """Return recent message processing latency."""
+    recent = get_recent_message_latency(limit=25)
+    durations = [entry["duration_ms"] for entry in recent if isinstance(entry.get("duration_ms"), (int, float))]
+    avg_ms = round(sum(durations) / len(durations), 2) if durations else 0
+    return jsonify({
+        "average_ms": avg_ms,
+        "records": recent,
+        "count": len(recent),
+    })
 
 
 @dashboard_bp.route("/dashboard", methods=["GET"])
@@ -132,6 +186,14 @@ def dashboard_page():
                     <div class="label">Last 24h</div>
                     <div id="last-day-count" class="value">--</div>
                 </div>
+                <div class="card">
+                    <div class="label">Service</div>
+                    <div id="service-status" class="value">--</div>
+                </div>
+                <div class="card">
+                    <div class="label">Avg latency</div>
+                    <div id="avg-latency" class="value">--</div>
+                </div>
             </div>
 
             <div class="grid">
@@ -169,13 +231,21 @@ def dashboard_page():
             }
 
             async function loadDashboard() {
-                const summary = await fetch('/api/dashboard/summary');
+                const [summary, health, latency] = await Promise.all([
+                    fetch('/api/dashboard/summary'),
+                    fetch('/api/dashboard/health'),
+                    fetch('/api/dashboard/latency'),
+                ]);
                 const data = await summary.json();
+                const healthData = await health.json();
+                const latencyData = await latency.json();
 
                 document.getElementById('schools-count').textContent = data.schools.total;
                 document.getElementById('students-count').textContent = data.students.total;
                 document.getElementById('submissions-count').textContent = data.submissions.total;
                 document.getElementById('last-day-count').textContent = data.submissions.last_24_hours;
+                document.getElementById('service-status').textContent = healthData.status || 'unknown';
+                document.getElementById('avg-latency').textContent = `${latencyData.average_ms || 0} ms`;
 
                 const schoolRows = data.schools.rows.map(row => ({
                     school_name: row.school_name,

@@ -8,6 +8,8 @@ and processing them through the grading pipeline.
 import logging
 import threading
 import json
+from datetime import datetime
+
 import requests
 from config import SETTINGS
 from models import DetectionResult, InputImageMeta, WorksheetTemplate, CornerTagDetectionError, RowTagDetectionError, RollNumberError, InvalidStudentError, InvalidWorksheetError, InvalidSubmissionDataError
@@ -20,6 +22,29 @@ logger = logging.getLogger(__name__)
 
 SERVER_IP = SETTINGS.SERVER_IP
 DEWARPED_DIR = SETTINGS.DEWARPED_PATH
+_MESSAGE_LATENCY_HISTORY = []
+
+
+def update_message_latency(from_number, received_at, response_sent_at, status='ok'):
+    """Store message latency stats for dashboard monitoring."""
+    if not received_at or not response_sent_at:
+        return
+    duration_ms = int((response_sent_at - received_at).total_seconds() * 1000)
+    _MESSAGE_LATENCY_HISTORY.append({
+        "from_number": from_number,
+        "received_at": received_at.isoformat(),
+        "response_sent_at": response_sent_at.isoformat(),
+        "duration_ms": duration_ms,
+        "status": status,
+    })
+    if len(_MESSAGE_LATENCY_HISTORY) > 500:
+        del _MESSAGE_LATENCY_HISTORY[:-500]
+
+
+def get_recent_message_latency(limit=25):
+    """Return the latest message latency measurements."""
+    return list(reversed(_MESSAGE_LATENCY_HISTORY[-limit:]))
+
 
 def handle_message(data, session_id):
     """Process incoming WhatsApp webhook data.
@@ -54,6 +79,7 @@ def handle_message(data, session_id):
         return
 
     log_url = f"http://{SERVER_IP}:3000/logs/{session_id}.log"
+    received_at = datetime.utcnow()
     try:
         logger.info("Received: %s", data)
 
@@ -61,6 +87,8 @@ def handle_message(data, session_id):
         for message in messages:
             from_no = message.get("from")
             logger.info("Received message from %s", from_no)
+            response_start = datetime.utcnow()
+            final_status = 'ok'
 
             # Validate message and extract image URL
             is_valid, image_url, _ = is_valid_image_message(message)
@@ -102,6 +130,7 @@ def handle_message(data, session_id):
                         from_no,
                         "Could not read the roll number clearly. Please retake the photo. ⟳ \n"
                         "रोल नंबर नीट वाचता आला नाही. कृपया फोटो परत काढा. ⟳")
+                    update_message_latency(from_no, received_at, datetime.utcnow(), status='failed')
                     return
                 except RuntimeError as e:
                     # Native OCR/runtime failures from OpenCV/Paddle can occur on noisy or partial images.
@@ -110,12 +139,14 @@ def handle_message(data, session_id):
                         from_no,
                         "The worksheet could not be read properly. Please try again. ⟳ \n"
                         "कार्यपत्रिका नीट वाचता आली नाही. कृपया पुन्हा प्रयत्न करा. ⟳")
+                    update_message_latency(from_no, received_at, datetime.utcnow(), status='failed')
                     return
                 except Exception as e:
                     logger.exception("Unexpected failure while scanning worksheet: %s", e)
                     send_message(
                         from_no,
                         "Please try again. ⟳ \n कृपया पुन्हा प्रयत्न करा. ⟳")
+                    update_message_latency(from_no, received_at, datetime.utcnow(), status='failed')
                     return
 
                 # Save preprocessed image to correct file path for later access
@@ -151,6 +182,7 @@ def handle_message(data, session_id):
                             from_no,
                             "Roll number not recognized. Please check and try again. ⟳ \n"
                             "रोल नंबर ओळखता आला नाही. कृपया तपासून परत पाठवा. ⟳")
+                        update_message_latency(from_no, received_at, datetime.utcnow(), status='failed')
                         return
                     except (InvalidWorksheetError, InvalidSubmissionDataError) as e:
                         logger.debug("Invalid worksheet/submission data: %s", e)
@@ -158,6 +190,7 @@ def handle_message(data, session_id):
                             from_no,
                             "This worksheet could not be processed. Please try again. ⟳ \n"
                             "ही कार्यपत्रिका तपासता आली नाही. कृपया परत प्रयत्न करा. ⟳")
+                        update_message_latency(from_no, received_at, datetime.utcnow(), status='failed')
                         return
 
                     save_debug(worksheet)
@@ -166,6 +199,7 @@ def handle_message(data, session_id):
                         from_no,
                         f"Your marks: {score}/{len(answers)} \n" 
                         f"तुमचे मार्क: {score}/{len(answers)}")
+                    update_message_latency(from_no, received_at, datetime.utcnow(), status='ok')
                     
                     logger.info("Sending checked image.")
                     send_image(from_no, worksheet.checked_image_url, "")
@@ -178,6 +212,7 @@ def handle_message(data, session_id):
                     # OMR failed - missing question tags
                     send_message(
                         from_no, "Please try again. ⟳ \n फोटो परत काढा. ⟳")
+                    update_message_latency(from_no, received_at, datetime.utcnow(), status='failed')
 
                     # Log failed scan
                     logsheet_args = (from_no, file_url, "",
@@ -191,6 +226,7 @@ def handle_message(data, session_id):
                         from_no,
                         "Please send an image of a scanned worksheet. \n"
                         "कृप्या केवळ कार्यपत्रिकेचा फोटो काढा.")
+                    update_message_latency(from_no, received_at, datetime.utcnow(), status='failed')
 
                 # Log failed scan (user message does not contain image)
                 # logsheet_args = (from_no, "none", "", "", "failed", "", log_url)
