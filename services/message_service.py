@@ -9,12 +9,6 @@ import logging
 import threading
 import json
 import requests
-from services.image_service import (
-    scan_image, download_image, detect_orientation_and_decode, save_preprocessed, save_debug, save_checked
-)
-from services.grading_service import check_worksheet
-from services.logging_service import log_to_sheet
-from services.communication_service import send_image, send_message, is_valid_image_message
 from config import SETTINGS
 from models import DetectionResult, InputImageMeta, WorksheetTemplate, CornerTagDetectionError, RowTagDetectionError, RollNumberError, InvalidStudentError, InvalidWorksheetError, InvalidSubmissionDataError
 from db import process_submission
@@ -37,6 +31,28 @@ def handle_message(data, session_id):
         data (dict): Webhook payload from WhatsApp
         session_id (str): Unique session identifier for logging
     """
+    try:
+        from services.image_service import (
+            scan_image, download_image, detect_orientation_and_decode,
+            save_preprocessed, save_debug, save_checked
+        )
+        from services.grading_service import check_worksheet
+        from services.logging_service import log_to_sheet
+        from services.communication_service import send_image, send_message, is_valid_image_message
+    except ModuleNotFoundError as exc:
+        logger.exception("Missing dependency in image-processing pipeline: %s", exc)
+        if data and isinstance(data, dict):
+            messages = data.get("whatsapp", {}).get("messages", [])
+            for message in messages:
+                from_no = message.get("from")
+                if from_no:
+                    try:
+                        from services.communication_service import send_message
+                        send_message(from_no, "The system is currently unavailable. Please try again in a few minutes. ⟳")
+                    except Exception:
+                        pass
+        return
+
     log_url = f"http://{SERVER_IP}:3000/logs/{session_id}.log"
     try:
         logger.info("Received: %s", data)

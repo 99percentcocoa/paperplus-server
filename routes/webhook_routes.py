@@ -8,7 +8,7 @@ that receive and process WhatsApp messages.
 from flask import Blueprint, request
 from datetime import datetime
 import threading
-from services.message_service import handle_message
+
 from services.logging_service import setup_logging
 
 webhook_bp = Blueprint('webhook', __name__)
@@ -27,5 +27,11 @@ def webhook():
     data = request.get_json()
     session_id = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     setup_logging(session_id)
+
+    try:
+        from services.message_service import handle_message
+    except ModuleNotFoundError:
+        return "Service unavailable", 503
+
     threading.Thread(target=handle_message, args=(data, session_id,)).start()
     return "ok", 200

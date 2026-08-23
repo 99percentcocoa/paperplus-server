@@ -1,4 +1,40 @@
+import builtins
+import importlib
+import sys
+from pathlib import Path
+
 from app import app
+
+
+def test_webhook_routes_import_is_lazy_for_heavy_image_dependencies():
+    project_root = Path(__file__).resolve().parents[1]
+    original_sys_path = list(sys.path)
+    original_meta_path = list(sys.meta_path)
+    original_import = builtins.__import__
+
+    class BlockImageServiceImport:
+        def find_spec(self, fullname, path=None, target=None):
+            if fullname == "services.image_service":
+                raise ModuleNotFoundError("simulated missing image dependency")
+            return None
+
+    sys.path.insert(0, str(project_root))
+    sys.meta_path.insert(0, BlockImageServiceImport())
+
+    try:
+        for name in [
+            "routes.webhook_routes",
+            "services.message_service",
+            "services.image_service",
+        ]:
+            sys.modules.pop(name, None)
+
+        module = importlib.import_module("routes.webhook_routes")
+        assert hasattr(module, "webhook_bp")
+    finally:
+        sys.path[:] = original_sys_path
+        sys.meta_path[:] = original_meta_path
+        builtins.__import__ = original_import
 
 
 def test_dashboard_summary_api_returns_data():
