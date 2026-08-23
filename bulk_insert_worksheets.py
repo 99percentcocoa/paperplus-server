@@ -87,12 +87,28 @@ def infer_worksheet_category(worksheet_json: dict, filename: str | None = None) 
     return "practice"
 
 
-def iter_generated_files(lang_filter: str | None = None) -> list[Path]:
-    """Return generated JSON files, optionally filtered by language."""
+def iter_generated_files(lang_filter: str | None = None, subfolder: str | None = None) -> list[Path]:
+    """Return generated JSON files from a directory, optionally filtered by language."""
     files = []
-    if not JSON_DIR.exists():
+    base_dir = JSON_DIR / subfolder if subfolder else JSON_DIR
+    if not base_dir.exists():
         return files
-    for path in sorted(JSON_DIR.iterdir()):
+
+    iterator = base_dir.rglob("*.json") if subfolder else sorted(base_dir.iterdir())
+    if subfolder:
+        for path in sorted(iterator):
+            if not path.is_file():
+                continue
+            try:
+                details = parse_generated_filename(path.name)
+            except ValueError:
+                continue
+            if lang_filter and details.get("language") != lang_filter:
+                continue
+            files.append(path)
+        return files
+
+    for path in iterator:
         if not path.is_file() or path.suffix.lower() != ".json":
             continue
         try:
@@ -113,11 +129,14 @@ def main() -> None:
                         help="Attempt insert even when a worksheet_id already exists.")
     parser.add_argument("--lang", metavar="LANG",
                         help="Only process files for this language code (en/mr).")
+    parser.add_argument("--subfolder", default=None,
+                        help="Optional subfolder under files/json to scan for generated worksheet JSON files.")
     args = parser.parse_args()
 
-    files = iter_generated_files(args.lang)
+    files = iter_generated_files(args.lang, args.subfolder)
     if not files:
-        print(f"No generated worksheet JSON files found in {JSON_DIR}.")
+        target_dir = JSON_DIR / args.subfolder if args.subfolder else JSON_DIR
+        print(f"No generated worksheet JSON files found in {target_dir}.")
         sys.exit(0)
 
     inserted = skipped = errors = 0

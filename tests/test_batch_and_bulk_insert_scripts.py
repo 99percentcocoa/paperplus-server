@@ -1,4 +1,5 @@
 import importlib.util
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -61,6 +62,23 @@ class BatchAndBulkInsertScriptTests(unittest.TestCase):
             bulk.parse_generated_filename("en_homework_A_3.json"),
             {"worksheet_id": None, "language": "en", "worksheet_category": "homework"},
         )
+
+    def test_bulk_insert_reads_from_subfolder(self):
+        bulk = load_module("bulk_insert_worksheets", ROOT / "bulk_insert_worksheets.py")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            json_dir = root / "files" / "json" / "nested"
+            json_dir.mkdir(parents=True)
+            target = json_dir / "8001_en.json"
+            target.write_text('{"worksheet_id": 8001, "worksheet_category": "homework"}', encoding="utf-8")
+            (json_dir / "ignore.txt").write_text("skip", encoding="utf-8")
+
+            bulk.JSON_DIR = root / "files" / "json"
+
+            files = bulk.iter_generated_files(subfolder="nested")
+            self.assertEqual([p.name for p in files], ["8001_en.json"])
+            self.assertEqual(files[0].parent.name, "nested")
 
 
 if __name__ == "__main__":
