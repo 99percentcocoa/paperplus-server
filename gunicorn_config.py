@@ -4,12 +4,17 @@ import multiprocessing
 bind = "127.0.0.1:8001"  # Nginx will reverse proxy to this
 backlog = 2048
 
-# Worker processes
-workers = multiprocessing.cpu_count() * 2 + 1
+# Keep worker count conservative for ML-heavy workloads.
+# The earlier crash showed import-time failures under a large worker fan-out.
+workers = max(2, min(4, (multiprocessing.cpu_count() // 2) or 2))
 worker_class = "sync"
 worker_connections = 1000
-timeout = 120  # Increased for image processing
+timeout = 180
 keepalive = 5
+max_requests = 1000
+max_requests_jitter = 100
+graceful_timeout = 30
+preload_app = False
 
 # Logging
 accesslog = "logs/gunicorn-access.log"
