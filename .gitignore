@@ -21,6 +21,7 @@ sync-db.sh
 # Logs and temp files
 *.log
 *.tmp
+*.zip
 paperplus.sql
 
 # System or editor files
