@@ -1,12 +1,14 @@
-import multiprocessing
+import os
 
 # Server socket
 bind = "127.0.0.1:8001"  # Nginx will reverse proxy to this
 backlog = 2048
 
 # Keep worker count conservative for ML-heavy workloads.
-# The earlier crash showed import-time failures under a large worker fan-out.
-workers = max(2, min(4, (multiprocessing.cpu_count() // 2) or 2))
+# Each gunicorn worker loads OpenCV + TFLite + optional PaddleOCR models, which
+# can exhaust RAM under a memory-constrained VM. Default to a single worker unless
+# the operator explicitly overrides it.
+workers = max(1, min(2, int(os.getenv("PAPERPLUS_WORKERS", "1"))))
 worker_class = "sync"
 worker_connections = 1000
 timeout = 180
