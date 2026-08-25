@@ -7,6 +7,10 @@ integrating with external logging services like Google Sheets.
 
 import os
 import logging
+import time
+from contextlib import contextmanager
+from datetime import datetime, timezone
+
 import requests
 from config import SETTINGS
 
@@ -14,6 +18,26 @@ logger = logging.getLogger(__name__)
 
 LOGS_PATH = SETTINGS.LOGS_PATH
 SHEETS_LOGGING_URL = SETTINGS.SHEETS_LOGGING_URL
+
+
+@contextmanager
+def timing_context(operation_name, **context):
+    """Capture timestamps and elapsed time for expensive operations."""
+    started_at = datetime.now(timezone.utc)
+    started_monotonic = time.perf_counter()
+    timing = {
+        "operation": operation_name,
+        "started_at": started_at.isoformat(),
+        **context,
+    }
+    try:
+        yield timing
+    finally:
+        ended_at = datetime.now(timezone.utc)
+        elapsed_ms = (time.perf_counter() - started_monotonic) * 1000
+        timing["ended_at"] = ended_at.isoformat()
+        timing["duration_ms"] = round(elapsed_ms, 2)
+        logger.info("Operation timing: %s", timing)
 
 
 def setup_logging(session_id):
@@ -78,4 +102,5 @@ def log_to_sheet(sender, file_url, debug_url, checkedURL, marked, score, log_url
         "worksheet_id": worksheet_id
     }
     logger.info("Google Sheet Logging Payload: %s", payload)
-    requests.post(SHEETS_LOGGING_URL, json=payload, headers={"Content-Type": "application/json"}, timeout=(10, 30))
+    with timing_context("log_to_sheet", sender=sender, worksheet_id=worksheet_id):
+        requests.post(SHEETS_LOGGING_URL, json=payload, headers={"Content-Type": "application/json"}, timeout=(10, 30))

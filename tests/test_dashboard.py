@@ -97,3 +97,16 @@ def test_message_latency_helper_works():
     recent = get_recent_message_latency(limit=10)
     assert recent
     assert recent[0]['duration_ms'] >= 2000
+
+
+def test_timing_context_records_timestamps():
+    import time
+    from services.logging_service import timing_context
+
+    with timing_context('unit_test_op', test_case='timing') as ctx:
+        time.sleep(0.02)
+
+    assert 'started_at' in ctx
+    assert 'ended_at' in ctx
+    assert 'duration_ms' in ctx
+    assert ctx['duration_ms'] >= 10

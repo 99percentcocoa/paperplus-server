@@ -27,11 +27,33 @@ from models import InputImageMeta, WorksheetTemplate
 from config import SETTINGS
 from services.inference import predict_ocr
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+LOG_FORMAT = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+
+
+def configure_logging(output_folder: Path) -> Path:
+    """Configure root logging to both console and a file in the output folder."""
+    output_folder.mkdir(parents=True, exist_ok=True)
+    log_path = output_folder / "offline_pipeline.log"
+
+    root_logger = logging.getLogger()
+    for handler in root_logger.handlers[:]:
+        root_logger.removeHandler(handler)
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format=LOG_FORMAT,
+        handlers=[
+            logging.FileHandler(log_path, encoding='utf-8'),
+            logging.StreamHandler()
+        ],
+        force=True,
+    )
+
+    logger = logging.getLogger(__name__)
+    logger.info("Logging initialized. Log file: %s", log_path)
+    return log_path
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -246,12 +268,13 @@ Examples:
     
     input_path = Path(args.input)
     output_path = Path(args.output)
-    
-    # Create output directories
+
     try:
+        configure_logging(output_path)
+        logger.info("Processing input: %s", input_path)
         dewarped_dir, debug_dir, checked_dir, cropped_dir, bubbles_dir = create_output_directories(output_path)
     except Exception as e:
-        logger.error("Failed to create output directories: %s", e)
+        logger.error("Failed to initialize output directories or logging: %s", e)
         return 1
     
     # Process image(s)

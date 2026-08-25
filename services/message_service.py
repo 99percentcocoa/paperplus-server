@@ -62,7 +62,7 @@ def handle_message(data, session_id):
             save_preprocessed, save_debug, save_checked
         )
         from services.grading_service import check_worksheet
-        from services.logging_service import log_to_sheet
+        from services.logging_service import log_to_sheet, timing_context
         from services.communication_service import send_image, send_message, is_valid_image_message
     except ModuleNotFoundError as exc:
         logger.exception("Missing dependency in image-processing pipeline: %s", exc)
@@ -97,14 +97,16 @@ def handle_message(data, session_id):
                 logger.info("Processing valid image message from %s", from_no)
 
                 # Download the image
-                filepath, file_url = download_image(
-                    image_url, session_id, from_no)
+                with timing_context("download_image", from_no=from_no, image_url=image_url):
+                    filepath, file_url = download_image(
+                        image_url, session_id, from_no)
 
                 # Send processing message
-                threading.Thread(
-                    target=send_message,
-                    args=(from_no, "Checking... ⏳ \n कार्यपत्रिका तपासत आहे... ⏳")
-                ).start()
+                with timing_context("send_processing_message", from_no=from_no):
+                    threading.Thread(
+                        target=send_message,
+                        args=(from_no, "Checking... ⏳ \n कार्यपत्रिका तपासत आहे... ⏳")
+                    ).start()
                 
                 # input_image = InputImageMeta(image_path=filepath)
 
@@ -113,7 +115,8 @@ def handle_message(data, session_id):
 
                 try:
                     # image validation, tag sorting done in scan_image
-                    worksheet = scan_image(worksheet.input_image)
+                    with timing_context("scan_image", from_no=from_no, file_path=filepath):
+                        worksheet = scan_image(worksheet.input_image)
                 except (CornerTagDetectionError, RowTagDetectionError) as e:
                     # Corner or row tags detection failed
                     logger.debug("Tag detection failed: %s", e)
@@ -150,12 +153,14 @@ def handle_message(data, session_id):
                     return
 
                 # Save preprocessed image to correct file path for later access
-                save_preprocessed(worksheet)
+                with timing_context("save_preprocessed", from_no=from_no, worksheet_id=getattr(worksheet, "worksheet_id", None)):
+                    save_preprocessed(worksheet)
 
                 # debug, checked will be saved at the end, so no need to save here
 
                 # Process OMR answers
-                answers, q_score, omr_success = check_worksheet(worksheet_meta=worksheet, use_classifier=True, debug=False)
+                with timing_context("check_worksheet", from_no=from_no):
+                    answers, q_score, omr_success = check_worksheet(worksheet_meta=worksheet, use_classifier=True, debug=False)
                 roll_number, worksheet_id = worksheet.roll_number, worksheet.worksheet_id
                 score = sum(q_score) if q_score else 0
 
@@ -168,13 +173,14 @@ def handle_message(data, session_id):
                         for i, (ans, is_correct) in enumerate(zip(answers, q_score))
                     ]
                     try:
-                        submission_result = process_submission(
-                            student_id=roll_number,
-                            worksheet_id=worksheet_id,
-                            score=score,
-                            from_number=from_no,
-                            answers_json=submission_answers
-                        )
+                        with timing_context("process_submission", from_no=from_no, student_id=roll_number, worksheet_id=worksheet_id):
+                            submission_result = process_submission(
+                                student_id=roll_number,
+                                worksheet_id=worksheet_id,
+                                score=score,
+                                from_number=from_no,
+                                answers_json=submission_answers
+                            )
                         logger.info("Submission processed: %s", submission_result)
                     except InvalidStudentError as e:
                         logger.debug("Invalid student_id for submission: %s", e)
@@ -193,20 +199,24 @@ def handle_message(data, session_id):
                         update_message_latency(from_no, received_at, datetime.utcnow(), status='failed')
                         return
 
-                    save_debug(worksheet)
-                    save_checked(worksheet)
-                    send_message(
-                        from_no,
-                        f"Your marks: {score}/{len(answers)} \n" 
-                        f"तुमचे मार्क: {score}/{len(answers)}")
+                    with timing_context("save_debug_and_checked", from_no=from_no, worksheet_id=worksheet_id):
+                        save_debug(worksheet)
+                        save_checked(worksheet)
+                    with timing_context("send_result_message", from_no=from_no, score=score):
+                        send_message(
+                            from_no,
+                            f"Your marks: {score}/{len(answers)} \n" 
+                            f"तुमचे मार्क: {score}/{len(answers)}")
                     update_message_latency(from_no, received_at, datetime.utcnow(), status='ok')
                     
                     logger.info("Sending checked image.")
-                    send_image(from_no, worksheet.checked_image_url, "")
+                    with timing_context("send_checked_image", from_no=from_no, checked_image_url=worksheet.checked_image_url):
+                        send_image(from_no, worksheet.checked_image_url, "")
 
                     logsheet_args = (from_no, file_url, worksheet.debug_image.image_url, worksheet.checked_image_url, json.dumps(answers), score, log_url, roll_number, worksheet_id)
                     logger.debug("Logging to Google Sheets: %s", logsheet_args)
-                    threading.Thread(target=log_to_sheet, args=logsheet_args).start()
+                    with timing_context("async_log_to_sheet", from_no=from_no, worksheet_id=worksheet_id):
+                        threading.Thread(target=log_to_sheet, args=logsheet_args).start()
 
                 else:
                     # OMR failed - missing question tags
