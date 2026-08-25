@@ -18,7 +18,7 @@ from .migrations import run_migrations
 
 # Domain CRUD
 from .schools import upsert_school, get_school, list_schools
-from .students import upsert_student, get_student, update_student_level, deactivate_student, list_students
+from .students import upsert_student, get_student, update_student_level, deactivate_student, list_students, normalize_student_id, next_student_id
 from .skills import upsert_skill, get_skill, list_skills, import_skills_from_json
 from .worksheets import create_worksheet, check_test, get_worksheet, get_worksheet_json, get_answer_key, list_worksheets
 from .questions import insert_questions_for_worksheet, get_questions_for_worksheet, get_question
@@ -48,6 +48,8 @@ __all__ = [
     "update_student_level",
     "deactivate_student",
     "list_students",
+    "normalize_student_id",
+    "next_student_id",
     # Skills
     "upsert_skill",
     "get_skill",
