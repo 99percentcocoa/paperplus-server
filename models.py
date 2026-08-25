@@ -197,7 +197,6 @@ class WorksheetTemplate:
     input_image: InputImageMeta
     cropped_image: Optional[InputImageMeta] = None
     blurred_image: Optional[InputImageMeta] = None
-    preprocessed_image: Optional[InputImageMeta] = None
     corner_detections: Optional[DetectionResult] = None
     row_detections: Optional[DetectionResult] = None
     debug_image: Optional[InputImageMeta] = None
@@ -226,19 +225,7 @@ class ROI:
         """Calculate the height of the ROI."""
         return self.y2 - self.y1
 
-@dataclass
-class ContourData:
-    """Data class to hold contour information."""
-    contour: np.ndarray
-    area: float = field(init=False)
-    perimeter: float = field(init=False)
-    circularity: float = field(init=False)
-    
-    def __post_init__(self):
-        """Calculate area, perimeter, and circularity from contour."""
-        self.area = cv2.contourArea(self.contour)
-        self.perimeter = cv2.arcLength(self.contour, closed=True)
-        
+
         # Calculate circularity (4π * area / perimeter²)
         if self.perimeter > 0:
             self.circularity = (4 * np.pi * self.area) / (self.perimeter ** 2)

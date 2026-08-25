@@ -41,11 +41,6 @@ class Config:
 
     ROLL_NUMBER_ROI = (420, 1660, 850, 1754) # x1, y1, x2, y2
 
-    MIN_MARK_AREA = 600
-    MAX_MARK_AREA = 950
-    FILL_THRESHOLD = 0.6
-    MIN_CIRCULARITY = 0.75
-
     # Worksheet levels map to difficulty level distributions
     # Keys are difficulty levels, values are proportions of 20 questions
     WORKSHEET_LEVEL_DISTRIBUTIONS = {

@@ -59,7 +59,7 @@ def handle_message(data, session_id):
     try:
         from services.image_service import (
             scan_image, download_image, detect_orientation_and_decode,
-            save_preprocessed, save_debug, save_checked
+            save_debug, save_checked
         )
         from services.grading_service import check_worksheet
         from services.logging_service import log_to_sheet, timing_context
@@ -152,15 +152,11 @@ def handle_message(data, session_id):
                     update_message_latency(from_no, received_at, datetime.utcnow(), status='failed')
                     return
 
-                # Save preprocessed image to correct file path for later access
-                with timing_context("save_preprocessed", from_no=from_no, worksheet_id=getattr(worksheet, "worksheet_id", None)):
-                    save_preprocessed(worksheet)
-
-                # debug, checked will be saved at the end, so no need to save here
+                # debug and checked images are saved after grading, so no need to pre-save here
 
                 # Process OMR answers
                 with timing_context("check_worksheet", from_no=from_no):
-                    answers, q_score, omr_success = check_worksheet(worksheet_meta=worksheet, use_classifier=True, debug=False)
+                    answers, q_score, omr_success = check_worksheet(worksheet_meta=worksheet, debug=False)
                 roll_number, worksheet_id = worksheet.roll_number, worksheet.worksheet_id
                 score = sum(q_score) if q_score else 0
 

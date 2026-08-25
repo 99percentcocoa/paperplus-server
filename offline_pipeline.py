@@ -21,7 +21,7 @@ import sys
 from pathlib import Path
 from typing import Tuple, Optional
 
-from services.image_service import scan_image, save_preprocessed, save_debug, save_checked
+from services.image_service import scan_image, save_debug, save_checked
 from services.grading_service import check_worksheet
 from models import InputImageMeta, WorksheetTemplate
 from config import SETTINGS
@@ -141,6 +141,12 @@ def process_worksheet(
         grading_service.BUBBLES_FOLDER = bubbles_dir
         
         try:
+            dewarped_filename = f"{input_path.stem}_dewarped.jpg"
+            dewarped_path = dewarped_dir / dewarped_filename
+            dewarped_image = worksheet.cropped_image
+            dewarped_image.save(dewarped_path)
+            logger.info("✓ Dewarped image saved: %s", dewarped_filename)
+
             # save cropped image
             cropped_filename = f"{input_path.stem}_cropped.jpg"
             cropped_path = cropped_dir / cropped_filename
@@ -148,15 +154,9 @@ def process_worksheet(
             cropped_image.save(cropped_path)
             logger.info("✓ Cropped image saved: %s", cropped_filename)
 
-            # Step 3: Save preprocessed (dewarped) image
-            logger.info("Step 2: Saving preprocessed image...")
-            save_preprocessed(worksheet)
-            dewarped_filename = f"{input_path.stem}_preprocessed.jpg"
-            logger.info("✓ Preprocessed image saved: %s", dewarped_filename)
-            
-            # Step 4: Process OMR answers
-            logger.info("Step 3: Processing OMR answers...")
-            answers, q_score, omr_success = check_worksheet(worksheet, use_classifier=True, debug=True)
+            # Step 3: Process OMR answers
+            logger.info("Step 2: Processing OMR answers...")
+            answers, q_score, omr_success = check_worksheet(worksheet, debug=True)
             logging.info("✓ OMR processing completed. Detected answers: %s", answers)
             
             if not omr_success:

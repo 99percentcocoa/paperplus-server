@@ -165,15 +165,14 @@ def apply_median_blur(input_image: InputImageMeta, kernel_size: int = 31) -> Inp
     return InputImageMeta(image_array=blurred_image)
 
 def scan_image(input_image: InputImageMeta) -> WorksheetTemplate:
-    """Process image: dewarp, clean, and prepare for OMR.
+    """Process image: dewarp and prepare for OMR.
 
     Args:
         input_image (InputImageMeta): Metadata of the original image
 
     Returns:
-        worksheet_template: (WorksheetTemplate) containing metadata of cropped image, preprocessed image, debug image and detections.
+        worksheet_template: (WorksheetTemplate) containing metadata of cropped image, debug image and detections.
         cropped_image: (InputImageMeta) Metadata of the cropped image.
-        preprocessed_image: (InputImageMeta) Metadata of the preprocessed image.
         corner_detections: (DetectionResult) Result of AprilTag detections.
     """
 
@@ -181,7 +180,6 @@ def scan_image(input_image: InputImageMeta) -> WorksheetTemplate:
     cropped_image = crop_image(input_image, corner_detection_result)
     blurred_image = apply_median_blur(cropped_image)
     row_detection_result = detect_apriltags(cropped_image, "25h9")
-    preprocessed_image = clean_document(cropped_image)
 
     worksheet_id = decode_row_tags([tag.tag_id for tag in row_detection_result.detections])
 
@@ -208,7 +206,6 @@ def scan_image(input_image: InputImageMeta) -> WorksheetTemplate:
         input_image=input_image,
         cropped_image=cropped_image,
         blurred_image=blurred_image,
-        preprocessed_image=preprocessed_image,
         corner_detections=corner_detection_result,
         row_detections=row_detection_result,
         worksheet_id=worksheet_id,
@@ -363,119 +360,6 @@ def get_cropped_bubbles_roi(input_image: InputImageMeta) -> List[InputImageMeta]
 
     return roi_bubbles
 
-# def clean_document(img):
-#     """Clean and preprocess document image for OMR.
-
-#     Args:
-#         img (np.ndarray): Input image
-
-#     Returns:
-#         np.ndarray: Cleaned image
-#     """
-#     if img is None:
-#         raise ValueError("Cannot load image.")
-
-#     # 2. Convert to grayscale
-#     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-#     # 3. Remove noise (median filter works well for text)
-#     denoised = cv2.medianBlur(gray, 3)
-
-#     # 4. Shadow / illumination correction
-#     #    We estimate the background by heavy blur
-#     background = cv2.GaussianBlur(denoised, (99, 99), 0)
-
-#     # Avoid divide-by-zero
-#     background = background.astype(np.float32)
-#     denoised = denoised.astype(np.float32)
-
-#     # Normalize lighting
-#     corrected = (denoised / (background + 1)) * 255
-#     corrected = np.clip(corrected, 0, 255).astype(np.uint8)
-
-#     # 5. Sharpen slightly (helps with blur)
-#     kernel = np.array([
-#         [0, -1, 0],
-#         [-1,  5, -1],
-#         [0, -1, 0]
-#     ])
-#     sharp = cv2.filter2D(corrected, -1, kernel)
-
-#     # 6. Adaptive thresholding
-#     #    Sauvola style (OpenCV uses a similar method)
-#     binary = cv2.adaptiveThreshold(
-#         sharp,
-#         255,
-#         cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-#         cv2.THRESH_BINARY,
-#         101,   # block size
-#         10    # constant subtracted
-#     )
-
-#     # 7. Small speckle removal
-#     #    Remove small white or black dots
-#     clean = cv2.medianBlur(binary, 3)
-#     color_img = cv2.cvtColor(clean, cv2.COLOR_GRAY2BGR)
-
-#     return color_img
-
-def clean_document(input_image: InputImageMeta) -> InputImageMeta:
-    """Clean and preprocess document image for OMR.
-
-    Args:
-        input_image (InputImageMeta): Metadata of the input image.
-
-    Returns:
-        InputImageMeta: Metadata of the cleaned image.
-    """
-    if input_image.image_array is None:
-        raise ValueError("Cannot load image.")
-
-    img = input_image.image_array
-
-    # 2. Convert to grayscale
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-    # 3. Remove noise (median filter works well for text)
-    denoised = cv2.medianBlur(gray, 3)
-
-    # 4. Shadow / illumination correction
-    #    We estimate the background by heavy blur
-    background = cv2.GaussianBlur(denoised, (99, 99), 0)
-
-    # Avoid divide-by-zero
-    background = background.astype(np.float32)
-    denoised = denoised.astype(np.float32)
-
-    # Normalize lighting
-    corrected = (denoised / (background + 1)) * 255
-    corrected = np.clip(corrected, 0, 255).astype(np.uint8)
-
-    # 5. Sharpen slightly (helps with blur)
-    kernel = np.array([
-        [0, -1, 0],
-        [-1,  5, -1],
-        [0, -1, 0]
-    ])
-    sharp = cv2.filter2D(corrected, -1, kernel)
-
-    # 6. Adaptive thresholding
-    #    Sauvola style (OpenCV uses a similar method)
-    binary = cv2.adaptiveThreshold(
-        sharp,
-        255,
-        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv2.THRESH_BINARY,
-        101,   # block size
-        10    # constant subtracted
-    )
-
-    # 7. Small speckle removal
-    #    Remove small white or black dots
-    clean = cv2.medianBlur(binary, 3)
-    color_img = cv2.cvtColor(clean, cv2.COLOR_GRAY2BGR)
-
-    return InputImageMeta(image_array=color_img)
 
 def faint_preprocess(fp):
     """Preprocessing for faint AprilTag detection.
@@ -687,21 +571,6 @@ def detect_orientation_and_decode(detection: DetectionResult):
     #             print(f"Worksheet ID {worksheet_id} not found in database.")
     #             return None
     return None  # some error
-
-def save_preprocessed(worksheet_meta: WorksheetTemplate) -> None:
-    """Save preprocessed image (already contained in WorksheetTemplate) to DEWARPED_PATH with modified filename.
-
-    Args:
-        worksheet_meta (WorksheetTemplate): Metadata of the worksheet.
-    
-    Returns:
-        None
-    """
-    original_path = worksheet_meta.input_image.image_path
-    preprocessed_filename = f"{Path(original_path).stem}_preprocessed.jpg"
-    preprocessed_filepath = Path(SETTINGS.DEWARPED_PATH) / preprocessed_filename
-    worksheet_meta.preprocessed_image.save(preprocessed_filepath)
-    logger.debug("Saved preprocessed image to %s", preprocessed_filepath)
 
 def save_debug(worksheet_meta: WorksheetTemplate) -> None:
     """Save debug image (already contained in WorksheetTemplate) to DEWARPED_PATH with modified filename.
