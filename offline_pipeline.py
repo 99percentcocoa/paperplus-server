@@ -21,6 +21,8 @@ import sys
 from pathlib import Path
 from typing import Tuple, Optional
 
+import cv2
+
 from services.image_service import scan_image, save_debug, save_checked
 from services.grading_service import check_worksheet
 from models import InputImageMeta, WorksheetTemplate
@@ -57,26 +59,53 @@ def configure_logging(output_folder: Path) -> Path:
 logger = logging.getLogger(__name__)
 
 
-def create_output_directories(output_folder: Path) -> Tuple[Path, Path, Path, Path, Path]:
-    """Create output subdirectories for dewarped, debug, checked, cropped, and bubble images.
+def create_output_directories(output_folder: Path) -> Tuple[Path, Path, Path, Path, Path, Path]:
+    """Create output subdirectories for dewarped, debug, checked, cropped, bubble, and roll-number ROI images.
     
     Args:
         output_folder (Path): Root output folder
         
     Returns:
-        Tuple of (dewarped_dir, debug_dir, checked_dir, cropped_dir, bubbles_dir)
+        Tuple of (dewarped_dir, debug_dir, checked_dir, cropped_dir, bubbles_dir, roll_number_dir)
     """
     dewarped_dir = output_folder / "dewarped"
     debug_dir = output_folder / "debug"
     checked_dir = output_folder / "checked"
     cropped_dir = output_folder / "cropped"
     bubbles_dir = output_folder / "bubbles"
+    roll_number_dir = output_folder / "roll_number_rois"
     
-    for directory in [dewarped_dir, debug_dir, checked_dir, cropped_dir, bubbles_dir]:
+    for directory in [dewarped_dir, debug_dir, checked_dir, cropped_dir, bubbles_dir, roll_number_dir]:
         directory.mkdir(parents=True, exist_ok=True)
         logger.info("Created directory: %s", directory)
     
-    return dewarped_dir, debug_dir, checked_dir, cropped_dir, bubbles_dir
+    return dewarped_dir, debug_dir, checked_dir, cropped_dir, bubbles_dir, roll_number_dir
+
+
+def save_roll_number_roi(worksheet, output_dir: Path, input_path: Path) -> Path:
+    """Save the cropped roll-number OCR region as a separate image.
+
+    Args:
+        worksheet: Processed worksheet metadata with cropped_image.
+        output_dir: Directory to save the ROI file.
+        input_path: Source image path used to build the filename.
+
+    Returns:
+        Path to the saved ROI image.
+    """
+    x1, y1, x2, y2 = SETTINGS.ROLL_NUMBER_ROI
+    roi_image = worksheet.cropped_image.image_array[y1:y2, x1:x2]
+
+    if roi_image.size == 0 or roi_image.shape[0] == 0 or roi_image.shape[1] == 0:
+        raise ValueError(f"Roll number ROI is empty: {roi_image.shape}")
+
+    output_path = output_dir / f"{input_path.stem}_roll_number_roi.jpg"
+    saved = cv2.imwrite(str(output_path), roi_image)
+    if not saved:
+        raise ValueError(f"Failed to save roll number ROI to {output_path}")
+
+    logger.info("✓ Roll number ROI saved: %s", output_path)
+    return output_path
 
 def process_worksheet(
     input_path: Path,
@@ -84,7 +113,8 @@ def process_worksheet(
     debug_dir: Path,
     checked_dir: Path,
     cropped_dir: Path,
-    bubbles_dir: Path
+    bubbles_dir: Path,
+    roll_number_dir: Path
 ) -> Optional[dict]:
     """Process a single worksheet image through the OMR pipeline.
     
@@ -172,7 +202,11 @@ def process_worksheet(
             save_debug(worksheet)
             debug_filename = f"{input_path.stem}_debug.jpg"
             logger.info("✓ Debug image saved: %s", debug_filename)
-            
+
+            # Step 5b: Save the roll-number ROI as a dedicated crop
+            logger.info("Step 5b: Saving roll-number OCR ROI...")
+            roll_number_roi_path = save_roll_number_roi(worksheet, roll_number_dir, input_path)
+
             # Step 6: Save checked image (with marks)
             logger.info("Step 5: Saving checked image with marks...")
             save_checked(worksheet)
@@ -192,7 +226,8 @@ def process_worksheet(
                     "dewarped": str(dewarped_dir / dewarped_filename),
                     "debug": str(debug_dir / debug_filename),
                     "checked": str(checked_dir / checked_filename),
-                    "cropped": str(cropped_dir / cropped_filename)
+                    "cropped": str(cropped_dir / cropped_filename),
+                    "roll_number_roi": str(roll_number_roi_path)
                 }
             }
             
@@ -272,7 +307,7 @@ Examples:
     try:
         configure_logging(output_path)
         logger.info("Processing input: %s", input_path)
-        dewarped_dir, debug_dir, checked_dir, cropped_dir, bubbles_dir = create_output_directories(output_path)
+        dewarped_dir, debug_dir, checked_dir, cropped_dir, bubbles_dir, roll_number_dir = create_output_directories(output_path)
     except Exception as e:
         logger.error("Failed to initialize output directories or logging: %s", e)
         return 1
@@ -283,7 +318,7 @@ Examples:
     if input_path.is_file():
         # Single image file
         logger.info("Processing single image file: %s", input_path)
-        result = process_worksheet(input_path, dewarped_dir, debug_dir, checked_dir, cropped_dir, bubbles_dir)
+        result = process_worksheet(input_path, dewarped_dir, debug_dir, checked_dir, cropped_dir, bubbles_dir, roll_number_dir)
         
         if result:
             results_list.append(result)
@@ -308,7 +343,7 @@ Examples:
         
         for idx, image_file in enumerate(image_files, 1):
             logger.info("\n[%d/%d] Processing: %s", idx, len(image_files), image_file.name)
-            result = process_worksheet(image_file, dewarped_dir, debug_dir, checked_dir, cropped_dir, bubbles_dir)
+            result = process_worksheet(image_file, dewarped_dir, debug_dir, checked_dir, cropped_dir, bubbles_dir, roll_number_dir)
             
             if result:
                 results_list.append(result)
