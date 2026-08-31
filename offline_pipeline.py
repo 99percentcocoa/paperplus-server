@@ -26,6 +26,7 @@ from services.grading_service import check_worksheet
 from models import InputImageMeta, WorksheetTemplate
 from config import SETTINGS
 from services.inference import predict_ocr
+from db.flows import process_submission
 
 LOG_FORMAT = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 
@@ -57,6 +58,48 @@ def configure_logging(output_folder: Path) -> Path:
 logger = logging.getLogger(__name__)
 
 
+def build_submission_answers(answers: list[str]) -> list[dict]:
+    """Convert detected answers into the production-style answers_json payload."""
+    payload = []
+    for index, answer in enumerate(answers or [], start=1):
+        normalized = str(answer or "").strip().upper()
+        payload.append({
+            "question_index": index,
+            "is_correct": bool(normalized),
+            "selected_option": normalized if normalized else "",
+        })
+    return payload
+
+
+def persist_offline_submission(student_id: str | None, worksheet_id: int | None,
+                              score: int, answers: list[str], from_number: str | None = None,
+                              worksheet_meta: WorksheetTemplate | None = None) -> dict | None:
+    """Persist a locally scanned submission through the same DB flow used in production.
+
+    Prefer explicit IDs when provided, but default to values inferred from the scanned
+    sheet itself (roll number and worksheet_id) so the offline path matches the
+    production submission flow without forcing the caller to manually supply both.
+    """
+    resolved_student_id = (student_id or getattr(worksheet_meta, "roll_number", None) or "").strip()
+    resolved_worksheet_id = worksheet_id if worksheet_id is not None else getattr(worksheet_meta, "worksheet_id", None)
+
+    if not resolved_student_id or resolved_worksheet_id is None:
+        logger.warning(
+            "Offline DB save skipped: no student_id and no inferred roll number, or no worksheet_id and no inferred worksheet_id."
+        )
+        return None
+
+    submission = process_submission(
+        student_id=str(resolved_student_id),
+        worksheet_id=int(resolved_worksheet_id),
+        score=int(score),
+        from_number=str(from_number or ""),
+        answers_json=build_submission_answers(answers),
+    )
+    logger.info("Persisted offline submission to DB: %s", submission)
+    return submission
+
+
 def create_output_directories(output_folder: Path) -> Tuple[Path, Path, Path, Path, Path]:
     """Create output subdirectories for dewarped, debug, checked, cropped, and bubble images.
     
@@ -84,7 +127,11 @@ def process_worksheet(
     debug_dir: Path,
     checked_dir: Path,
     cropped_dir: Path,
-    bubbles_dir: Path
+    bubbles_dir: Path,
+    student_id: str | None = None,
+    worksheet_id: int | None = None,
+    from_number: str | None = None,
+    save_to_db: bool = False,
 ) -> Optional[dict]:
     """Process a single worksheet image through the OMR pipeline.
     
@@ -167,6 +214,24 @@ def process_worksheet(
             
             score = sum(q_score) if q_score else 0
             logger.info("✓ OMR processing successful. Score: %d/%d", score, len(answers))
+
+            if save_to_db:
+                persisted = persist_offline_submission(
+                    student_id=student_id,
+                    worksheet_id=worksheet_id,
+                    score=score,
+                    answers=answers,
+                    from_number=from_number,
+                    worksheet_meta=worksheet,
+                )
+                if persisted is not None:
+                    logger.info(
+                        "Saved offline submission to DB for student %s and worksheet %s",
+                        worksheet.roll_number if worksheet.roll_number else student_id,
+                        worksheet.worksheet_id if worksheet.worksheet_id is not None else worksheet_id,
+                    )
+                else:
+                    logger.warning("DB write requested but no valid inferred or explicit student/worksheet identifiers were available.")
             
             # Step 5: Save debug image
             logger.info("Step 4: Saving debug image with detections...")
@@ -260,6 +325,33 @@ Examples:
         action='store_true',
         help='Enable verbose logging'
     )
+
+    parser.add_argument(
+        '--student-id',
+        type=str,
+        default=None,
+        help='Optional student_id to persist the locally graded result through the production submission flow.'
+    )
+
+    parser.add_argument(
+        '--worksheet-id',
+        type=int,
+        default=None,
+        help='Optional worksheet_id to attach the offline scan to the production worksheet record.'
+    )
+
+    parser.add_argument(
+        '--from-number',
+        type=str,
+        default=None,
+        help='Optional sender number stored on the submission record, mirroring production submissions.'
+    )
+
+    parser.add_argument(
+        '--save-to-db',
+        action='store_true',
+        help='Persist the locally graded scan to submissions/attempts using the production DB flow.'
+    )
     
     args = parser.parse_args()
     
@@ -285,7 +377,18 @@ Examples:
     if input_path.is_file():
         # Single image file
         logger.info("Processing single image file: %s", input_path)
-        result = process_worksheet(input_path, dewarped_dir, debug_dir, checked_dir, cropped_dir, bubbles_dir)
+        result = process_worksheet(
+            input_path,
+            dewarped_dir,
+            debug_dir,
+            checked_dir,
+            cropped_dir,
+            bubbles_dir,
+            student_id=args.student_id,
+            worksheet_id=args.worksheet_id,
+            from_number=args.from_number,
+            save_to_db=args.save_to_db,
+        )
         
         if result:
             results_list.append(result)
@@ -310,7 +413,18 @@ Examples:
         
         for idx, image_file in enumerate(image_files, 1):
             logger.info("\n[%d/%d] Processing: %s", idx, len(image_files), image_file.name)
-            result = process_worksheet(image_file, dewarped_dir, debug_dir, checked_dir, cropped_dir, bubbles_dir)
+            result = process_worksheet(
+                image_file,
+                dewarped_dir,
+                debug_dir,
+                checked_dir,
+                cropped_dir,
+                bubbles_dir,
+                student_id=args.student_id,
+                worksheet_id=args.worksheet_id,
+                from_number=args.from_number,
+                save_to_db=args.save_to_db,
+            )
             
             if result:
                 results_list.append(result)

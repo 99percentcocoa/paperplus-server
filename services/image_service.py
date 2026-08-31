@@ -381,8 +381,7 @@ def get_roi_coordinates(row_detections: DetectionResult, template_name: str | No
 
     logger.debug("Row detections for ROI cropping: %s", [d.tag_id for d in row_detections.detections])
 
-    for i, detection in enumerate(row_detections.detections):
-        logger.debug("In detection %d", i)
+    for detection in row_detections.detections:
         anchor_x, anchor_y = detection.center
 
         for roi in question_rois:
@@ -392,7 +391,6 @@ def get_roi_coordinates(row_detections: DetectionResult, template_name: str | No
             x2 = int(x1 + rw)
             y2 = int(y1 + rh)
 
-            logger.info("ROI coordinates: %s, %s to %s, %s.", x1, y1, x2, y2)
             roi_coordinates.append(ROI(x1, y1, x2, y2))
 
     return roi_coordinates
