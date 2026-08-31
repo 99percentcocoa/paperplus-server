@@ -48,10 +48,10 @@ TEMPLATE_LAYOUTS = {
         left_question_roi=(85, -40, 485, 90),
         right_question_roi=(620, -40, 485, 90),
         roll_number_roi=(420, 1660, 850, 1754),
-        question_roi_columns=((85, -40, 485, 90), (355, -40, 485, 90), (620, -40, 485, 90)),
+        question_roi_columns=((50, -40, 365, 90), (430, -40, 365, 90), (810, -40, 365, 90)),
         handwritten_fields={
-            "roll_number": (420, 1660, 850, 1754),
-            "question_paper_code": (200, 130, 400, 230),
+            "roll_number": (820, 1650, 1150, 1754),
+            "question_paper_code": (100, 1650, 320, 1754),
         },
     ),
 }
