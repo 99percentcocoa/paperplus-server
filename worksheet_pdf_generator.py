@@ -2,7 +2,7 @@ import logging
 import json
 import argparse
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Any
 from services.pdf_generator_service import generate_tags_html, generate_questions_html
 from config import SETTINGS
 
@@ -16,12 +16,94 @@ logger = logging.getLogger(__name__)
 
 # python3 worksheet_pdf_generator.py --worksheet-id 1 --worksheet-json-filename en_level_A.json
 
+def _load_worksheet_data(worksheet_json_filename: str, worksheet_json_path: Optional[str] = None) -> dict:
+    """Load a worksheet JSON object from a direct path, a custom folder, or the configured workspace folders."""
+    candidate = Path(worksheet_json_filename)
+    search_roots: list[Path] = []
+
+    if candidate.is_absolute() and candidate.exists():
+        path = candidate
+    else:
+        if worksheet_json_path:
+            search_roots.append(Path(worksheet_json_path))
+        if WORKSHEET_JSON_PATH:
+            search_roots.append(Path(WORKSHEET_JSON_PATH))
+        search_roots.append(Path.cwd())
+        search_roots.append(Path(__file__).resolve().parent)
+
+        path = None
+        for root in search_roots:
+            possible = root / worksheet_json_filename if not candidate.is_absolute() else candidate
+            if possible.exists():
+                path = possible
+                break
+
+        if path is None:
+            raise FileNotFoundError(
+                f"Worksheet JSON not found: {worksheet_json_filename}. "
+                f"Checked: {', '.join(str(p) for p in search_roots)}"
+            )
+
+    with open(path, "r", encoding="utf-8") as f:
+        worksheet_data = json.load(f)
+
+    if isinstance(worksheet_data, list):
+        if not worksheet_data:
+            raise ValueError("worksheet JSON list is empty")
+        worksheet = worksheet_data[0]
+    elif isinstance(worksheet_data, dict):
+        worksheet = worksheet_data
+    else:
+        raise ValueError("worksheet JSON must be an object or a non-empty list")
+
+    return worksheet
+
+
+def _resolve_template_name(worksheet: dict, template_name: Optional[str] = None) -> str:
+    """Resolve which template family to use. Defaults to the legacy regular folder."""
+    selected = template_name or worksheet.get("template_name") or worksheet.get("template_type") or "regular"
+    normalized = str(selected).strip().lower()
+
+    if normalized in {"regular", "basic_omr"}:
+        return normalized
+    if normalized in {"plain_omr_assessment", "omr_assessment", "basic-omr"}:
+        return "basic_omr"
+    if normalized in {"practice", "worksheet"}:
+        return "regular"
+
+    raise ValueError(f"Unsupported template name: {selected!r}")
+
+
+def _resolve_template_filename(
+    worksheet: dict,
+    template_name: str,
+    template_filename: Optional[str] = None,
+) -> tuple[str, str]:
+    """Resolve the template folder and file name.
+
+    Returns (template_name, filename).
+    """
+    if template_filename:
+        return template_name, template_filename
+
+    language = worksheet.get("language")
+    if language == "en":
+        return template_name, "template_en.html"
+    if language == "mr":
+        return template_name, "template_mr.html"
+
+    raise ValueError("worksheet must specify a supported language or explicit template filename")
+
+
 def generate_worksheet_pdf(
     worksheet_id: int,
     worksheet_json_filename: str,
     tags_folder_path: Optional[str] = None,
     output_path: Optional[str] = PDF_WRITE_PATH,
-    base_dir: Optional[str] = HTML_BASE_DIR
+    base_dir: Optional[str] = HTML_BASE_DIR,
+    template_name: Optional[str] = "regular",
+    template_filename: Optional[str] = None,
+    worksheet_json_path: Optional[str] = None,
 ) -> bytes:
     """
     Generate a worksheet PDF and return its bytes.
@@ -41,39 +123,24 @@ def generate_worksheet_pdf(
     effective_tags_folder_path = Path(tags_folder_path) if tags_folder_path else (effective_base_dir / "tags")
     effective_templates_path = effective_base_dir / "templates"
 
-    # open worksheet json once and select language-specific template
-    with open(Path(WORKSHEET_JSON_PATH) / worksheet_json_filename, "r", encoding="utf-8") as f:
-        worksheet_data = json.load(f)
+    worksheet = _load_worksheet_data(worksheet_json_filename, worksheet_json_path)
+    questions = worksheet.get("questions") or []
+    resolved_template_name = _resolve_template_name(worksheet, template_name)
+    resolved_template_name, resolved_template_filename = _resolve_template_filename(
+        worksheet, resolved_template_name, template_filename
+    )
 
-    # Support both formats:
-    # 1) schema object: {"language": "mr", "questions": [...]}
-    # 2) legacy list: [{"language": "mr", "questions": [...]}]
-    if isinstance(worksheet_data, list):
-        if not worksheet_data:
-            raise ValueError("worksheet JSON list is empty")
-        worksheet = worksheet_data[0]
-    elif isinstance(worksheet_data, dict):
-        worksheet = worksheet_data
-    else:
-        raise ValueError("worksheet JSON must be an object or a non-empty list")
-
-    language = worksheet.get("language")
-    questions = worksheet["questions"]
-
-    if language == "en":
-        template_filename = "template_en.html"
-    elif language == "mr":
-        template_filename = "template_mr.html"
-    else:
-        raise ValueError("worksheet 'language' must be 'en' or 'mr'")
-
-    # read template from package directory
-    template_path = effective_templates_path / template_filename
+    template_dir = effective_templates_path / resolved_template_name
+    template_path = template_dir / resolved_template_filename
+    if not template_path.exists():
+        raise FileNotFoundError(f"Template file not found: {template_path}")
     with open(template_path, "r", encoding="utf-8") as f:
         template_html = f.read()
 
-    # generate questions HTML and tags HTML
-    questions_html = generate_questions_html(worksheet_id, questions, str(effective_tags_folder_path))
+    if resolved_template_name == "basic_omr":
+        questions_html = worksheet.get("questions_html", "")
+    else:
+        questions_html = generate_questions_html(worksheet_id, questions, str(effective_tags_folder_path))
 
     # corner tags are fixed: 0, 1, 2, 3
     tags_html = generate_tags_html([0, 1, 2, 3], str(effective_tags_folder_path))
@@ -83,14 +150,17 @@ def generate_worksheet_pdf(
     # fill template placeholders
     final_html = (
         template_html
+        .replace("{{template_name}}", resolved_template_name)
         .replace("{{tags_html}}", tags_html)
         .replace("{{questions}}", questions_html)
         .replace("{{worksheet_id}}", str(worksheet_id))
         .replace("{{level}}", worksheet.get("level", ""))
         .replace("{{worksheet_category}}", worksheet.get("worksheet_category", "practice"))
+        .replace("{{assessment_code}}", str(worksheet.get("assessment_code", "")))
+        .replace("{{roll_number}}", str(worksheet.get("roll_number", "")))
+        .replace("{{question_count}}", str(worksheet.get("question_count", len(questions))))
     )
 
-    # create PDF
     # Import weasyprint lazily so errors are raised only when generating
     from weasyprint import HTML
 
@@ -129,6 +199,21 @@ if __name__ == "__main__":
         default=HTML_BASE_DIR,
         help="Base directory used to resolve tags/ and templates/ paths.",
     )
+    parser.add_argument(
+        "--template-name",
+        default="regular",
+        help="Template family folder under assets/templates: regular or basic_omr. Default: regular.",
+    )
+    parser.add_argument(
+        "--template-file",
+        default=None,
+        help="Optional template filename inside the selected template folder.",
+    )
+    parser.add_argument(
+        "--worksheet-json-path",
+        default=None,
+        help="Optional custom directory that contains the worksheet JSON file.",
+    )
 
     args = parser.parse_args()
     generate_worksheet_pdf(
@@ -137,6 +222,9 @@ if __name__ == "__main__":
         tags_folder_path=args.tags_folder_path,
         output_path=f"{args.output_path}/{args.worksheet_id}.pdf",
         base_dir=args.base_dir,
+        template_name=args.template_name,
+        template_filename=args.template_file,
+        worksheet_json_path=args.worksheet_json_path,
     )
 
 
