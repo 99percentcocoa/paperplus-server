@@ -65,6 +65,21 @@ at_detector_25h9 = Detector(
 ORIENTATION_ID = 0
 db = TinyDB('worksheets.json')
 
+
+def validate_question_paper_code(raw_value: str | None) -> str:
+    """Validate a question paper code OCR result.
+
+    The field should be a single uppercase letter in A-F.
+    """
+    if not isinstance(raw_value, str):
+        return ""
+
+    normalized = raw_value.strip().upper()
+    if len(normalized) == 1 and normalized in {"A", "B", "C", "D", "E", "F"}:
+        return normalized
+    return ""
+
+
 def detect_apriltags(input_image: InputImageMeta, tag_family: str) -> DetectionResult:
     """Detect AprilTags in the given input image.
 
@@ -229,8 +244,9 @@ def scan_image(input_image: InputImageMeta) -> WorksheetTemplate:
         p_x1, p_y1, p_x2, p_y2 = paper_code_roi_spec
         paper_code_roi = cropped_image.image_array[p_y1:p_y2, p_x1:p_x2]
         if paper_code_roi.size > 0 and paper_code_roi.shape[0] > 0 and paper_code_roi.shape[1] > 0:
-            paper_code = predict_ocr(InputImageMeta(image_array=paper_code_roi)) or ""
-            logger.debug("Paper code detected: %s", paper_code)
+            raw_paper_code = predict_ocr(InputImageMeta(image_array=paper_code_roi)) or ""
+            paper_code = validate_question_paper_code(raw_paper_code)
+            logger.debug("Paper code OCR returned %r; validated value: %r", raw_paper_code, paper_code)
 
     debug_image = cropped_image
 
@@ -250,7 +266,8 @@ def scan_image(input_image: InputImageMeta) -> WorksheetTemplate:
         page_metadata=row_metadata,
         debug_image=debug_image,
         checked_image=checked_image,
-        roll_number=roll_number
+        roll_number=roll_number,
+        question_paper_code=paper_code
     )
 
     record_worksheet_page_metadata(

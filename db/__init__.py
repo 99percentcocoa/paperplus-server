@@ -28,6 +28,9 @@ from .worksheets import (
     get_worksheet_page,
     get_worksheet_pages,
     get_answer_key,
+    save_omr_answer_key,
+    get_omr_answer_key,
+    resolve_answer_key_for_template,
     list_worksheets,
     upsert_worksheet_page,
 )
@@ -73,6 +76,9 @@ __all__ = [
     "get_worksheet_page",
     "get_worksheet_pages",
     "get_answer_key",
+    "save_omr_answer_key",
+    "get_omr_answer_key",
+    "resolve_answer_key_for_template",
     "list_worksheets",
     "upsert_worksheet_page",
     # Questions

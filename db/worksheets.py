@@ -127,6 +127,78 @@ def get_answer_key(worksheet_id: int) -> list | None:
     return [q["correct_option"] for q in questions]
 
 
+def save_omr_answer_key(template_name: str, question_paper_code: str, answer_key: list[str], worksheet_id: int | None = None) -> int:
+    """Persist a template-specific answer key for a given OMR paper code."""
+    if not isinstance(template_name, str) or not template_name.strip():
+        raise ValueError("template_name is required")
+
+    normalized_code = question_paper_code.strip().upper() if isinstance(question_paper_code, str) else ""
+    if len(normalized_code) != 1 or normalized_code not in {"A", "B", "C", "D", "E", "F"}:
+        raise ValueError("question_paper_code must be a single uppercase letter A-F")
+
+    normalized_key = list(answer_key or [])
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS omr_answer_sets (
+                    id serial PRIMARY KEY,
+                    template_name text NOT NULL,
+                    question_paper_code text NOT NULL,
+                    worksheet_id integer,
+                    answer_key_json jsonb NOT NULL,
+                    created_at timestamptz NOT NULL DEFAULT now(),
+                    UNIQUE (template_name, question_paper_code)
+                )
+                """
+            )
+            cur.execute(
+                """
+                INSERT INTO omr_answer_sets (template_name, question_paper_code, worksheet_id, answer_key_json)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (template_name, question_paper_code)
+                DO UPDATE SET
+                    worksheet_id = EXCLUDED.worksheet_id,
+                    answer_key_json = EXCLUDED.answer_key_json
+                RETURNING id
+                """,
+                (template_name.strip().lower(), normalized_code, worksheet_id, json.dumps(normalized_key)),
+            )
+            row = cur.fetchone()
+            return int(row["id"])
+
+
+def get_omr_answer_key(template_name: str, question_paper_code: str) -> list[str] | None:
+    """Return the stored answer key for a template/paper code pair, if present."""
+    if not template_name or not question_paper_code:
+        return None
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT answer_key_json FROM omr_answer_sets WHERE template_name = %s AND question_paper_code = %s",
+                (str(template_name).strip().lower(), str(question_paper_code).strip().upper()),
+            )
+            row = cur.fetchone()
+            if row is None:
+                return None
+            return list(row["answer_key_json"])
+
+
+def resolve_answer_key_for_template(template_name: str, worksheet_id: int | None, question_paper_code: str | None = None) -> list[str] | None:
+    """Resolve the answer key for a worksheet, preferring the paper-code mapping for OMR templates."""
+    if template_name and str(template_name).strip().lower() == "basic_omr":
+        if question_paper_code:
+            return get_omr_answer_key(template_name, question_paper_code)
+        if worksheet_id is not None:
+            return get_answer_key(worksheet_id)
+        return None
+
+    if worksheet_id is None:
+        return None
+    return get_answer_key(worksheet_id)
+
+
 def upsert_worksheet_page(worksheet_id: int, page_no: int, first_question_index: int,
                           last_question_index: int | None = None,
                           expected_row_tag_count: int = 10,

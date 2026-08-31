@@ -12,7 +12,7 @@ import cv2  # pylint: disable=no-member
 import numpy as np
 from PIL import ImageDraw, ImageFont
 from tinydb import TinyDB
-from db import get_worksheet_json, get_answer_key
+from db import get_worksheet_json, get_answer_key, resolve_answer_key_for_template
 from services.image_service import get_roi_coordinates, get_cropped_bubbles_roi
 from services.communication_service import send_message, send_image
 from services.logging_service import log_to_sheet
@@ -28,6 +28,21 @@ CHECKED_PATH = SETTINGS.CHECKED_PATH
 SERVER_IP = SETTINGS.SERVER_IP
 
 BUBBLES_FOLDER = Path(__file__).parent.parent / "bubbles"
+
+
+def get_answer_key_for_question_slice(answer_key: List[str] | None, first_question_index: int | None, question_count: int) -> List[str]:
+    """Return the relevant answer-key slice for a page.
+
+    If the stored answer key contains fewer than the requested number of questions,
+    the missing tail is simply ignored rather than causing an index error.
+    """
+    if not answer_key:
+        return []
+
+    start_index = max(0, (int(first_question_index or 1) - 1))
+    end_index = start_index + max(0, int(question_count or 0))
+    return answer_key[start_index:end_index]
+
 
 def detect_bubble_inference(roi_image: InputImageMeta, debug=False, question_number=0) -> str:
     """
@@ -82,15 +97,34 @@ def check_worksheet(worksheet_meta: WorksheetTemplate, debug=False) -> Tuple[Lis
     #     logger.error("Failed to load answer key for worksheet %s: %s", worksheet_meta.worksheet_id, e)
     #     return [], [], False
     
-    # Load answer key from database (postgres)
+    # Load answer key from database (postgres). For basic_omr sheets, use the
+    # scanned question-paper code to resolve the correct answer set instead of
+    # a generic worksheet_id lookup.
     try:
-        ans_key = get_answer_key(worksheet_meta.worksheet_id)
+        ans_key = resolve_answer_key_for_template(
+            worksheet_meta.template_name,
+            worksheet_meta.worksheet_id,
+            getattr(worksheet_meta, "question_paper_code", None),
+        )
+        if ans_key is None:
+            ans_key = get_answer_key(worksheet_meta.worksheet_id)
     except Exception as e:
         logger.error("Failed to load answer key from postgres for worksheet %s: %s", worksheet_meta.worksheet_id, e)
         return [], [], False
 
+    if ans_key is None:
+        logger.error("No answer key available for worksheet %s and template %s.", worksheet_meta.worksheet_id, worksheet_meta.template_name)
+        return [], [], False
+
+    first_question_index = getattr(worksheet_meta, "first_question_index", 1) or 1
+    question_count = len(roi_coordinates) if 'roi_coordinates' in locals() else None
+    if question_count is None:
+        roi_coordinates = get_roi_coordinates(worksheet_meta.row_detections, worksheet_meta.template_name)
+        question_count = len(roi_coordinates)
+
+    ans_key = get_answer_key_for_question_slice(ans_key, first_question_index, question_count)
     worksheet_meta.answer_key = ans_key
-    logger.info("Answer key for worksheet %s: %s", worksheet_meta.worksheet_id, ans_key)
+    logger.info("Answer key for worksheet %s (template=%s, code=%s, first_question_index=%s): %s", worksheet_meta.worksheet_id, worksheet_meta.template_name, getattr(worksheet_meta, "question_paper_code", None), first_question_index, ans_key)
 
     # Process answers for each tag
     answers = []
@@ -108,8 +142,8 @@ def check_worksheet(worksheet_meta: WorksheetTemplate, debug=False) -> Tuple[Lis
         # roi coordinates x1, y1, x2, y2
         x1, y1, x2, y2 = roi_coordinate.x1, roi_coordinate.y1, roi_coordinate.x2, roi_coordinate.y2
 
-        q_no = i + 1
-        q_ans = ans_key[i]
+        q_no = int(first_question_index) + i
+        q_ans = ans_key[i] if i < len(ans_key) else ""
         logger.debug("Processing ROI %s", q_no)
 
         roi_image_array = worksheet_meta.blurred_image.image_array[

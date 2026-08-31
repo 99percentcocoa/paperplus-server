@@ -117,6 +117,7 @@ def process_worksheet(
             worksheet = scan_image(input_image)
             logger.info("✓ Image scan successful. Worksheet ID: %s", worksheet.worksheet_id)
             logger.info("Roll number: %s", worksheet.roll_number)
+            logger.info("Question paper code: %s", worksheet.question_paper_code)
         except ValueError as e:
             logger.error("✗ Image scan failed: %s", e)
             logger.error("  Possible causes: Missing/incorrect corner tags, poor image quality")
@@ -188,6 +189,7 @@ def process_worksheet(
                 "total_questions": len(answers),
                 "answers": answers,
                 "question_scores": q_score,
+                "question_paper_code": worksheet.question_paper_code,
                 "output_files": {
                     "dewarped": str(dewarped_dir / dewarped_filename),
                     "debug": str(debug_dir / debug_filename),

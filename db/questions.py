@@ -3,15 +3,22 @@
 import json
 
 from .connection import get_connection
+from .skills import upsert_skill
 
 
 def insert_questions_for_worksheet(worksheet_id: int, questions: list[dict]) -> list[int]:
-    """Bulk-insert questions for a worksheet. Returns generated question_ids."""
+    """Bulk-insert questions for a worksheet.
+
+    Legacy worksheets include a per-question `skill_code`. New OMR sheets do not,
+    so they are stored under a synthetic `omr` skill that keeps the database schema
+    valid without breaking older worksheet imports.
+    """
+    upsert_skill("omr", "OMR placeholder skill", "omr", 1.0)
     question_ids = []
     with get_connection() as conn:
         with conn.cursor() as cur:
             for position, q in enumerate(questions, start=1):
-                skill_code = q["skill_code"]
+                skill_code = q.get("skill_code") or q.get("skill") or "omr"
                 index = q.get("index", position)
                 cur.execute(
                     """INSERT INTO questions (worksheet_id, skill_code, index, question_json)

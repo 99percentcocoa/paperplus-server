@@ -1,5 +1,6 @@
 import importlib.util
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -115,9 +116,9 @@ class BatchAndBulkInsertScriptTests(unittest.TestCase):
     def test_template_layouts_override_roi_settings_per_template(self):
         layout = get_template_layout("basic_omr")
         self.assertGreaterEqual(len(layout.question_roi_columns), 3)
-        self.assertEqual(layout.question_roi_columns[0], (85, -40, 485, 90))
-        self.assertEqual(layout.question_roi_columns[1], (355, -40, 485, 90))
-        self.assertEqual(layout.question_roi_columns[2], (620, -40, 485, 90))
+        self.assertEqual(layout.question_roi_columns[0], (50, -40, 365, 90))
+        self.assertEqual(layout.question_roi_columns[1], (430, -40, 365, 90))
+        self.assertEqual(layout.question_roi_columns[2], (810, -40, 365, 90))
         self.assertTrue(get_handwritten_field_roi("basic_omr", "question_paper_code") is None or isinstance(get_handwritten_field_roi("basic_omr", "question_paper_code"), tuple))
 
     def test_row_tag_decoder_supports_legacy_and_13_tag_layout(self):
@@ -147,6 +148,65 @@ class BatchAndBulkInsertScriptTests(unittest.TestCase):
 
         self.assertIn("40.", html)
         self.assertGreaterEqual(html.count("class='question_td'"), 3)
+
+    def test_question_paper_code_validation_requires_single_uppercase_letter_a_to_f(self):
+        image_service = load_module("services.image_service", ROOT / "services" / "image_service.py")
+
+        self.assertEqual(image_service.validate_question_paper_code("A"), "A")
+        self.assertEqual(image_service.validate_question_paper_code(" a "), "A")
+        self.assertEqual(image_service.validate_question_paper_code("F"), "F")
+        self.assertEqual(image_service.validate_question_paper_code("AB"), "")
+        self.assertEqual(image_service.validate_question_paper_code("g"), "")
+        self.assertEqual(image_service.validate_question_paper_code("3"), "")
+
+    def test_basic_omr_uses_question_paper_code_to_resolve_answer_key(self):
+        from db.worksheets import save_omr_answer_key, resolve_answer_key_for_template
+
+        worksheet_id = 9003
+        save_omr_answer_key("basic_omr", "A", ["A", "B", "C", "D"], worksheet_id=worksheet_id)
+        save_omr_answer_key("basic_omr", "B", ["D", "C", "B", "A"], worksheet_id=worksheet_id)
+
+        self.assertEqual(resolve_answer_key_for_template("basic_omr", worksheet_id, "A"), ["A", "B", "C", "D"])
+        self.assertEqual(resolve_answer_key_for_template("basic_omr", worksheet_id, "B"), ["D", "C", "B", "A"])
+        self.assertIsNone(resolve_answer_key_for_template("basic_omr", worksheet_id, "Z"))
+
+    def test_basic_omr_grading_uses_first_question_index_and_truncates_short_answer_key(self):
+        from services.grading_service import get_answer_key_for_question_slice
+
+        full_answer_key = [chr(ord("A") + (i % 4)) for i in range(78)]
+
+        page_one_slice = get_answer_key_for_question_slice(full_answer_key, 1, 39)
+        self.assertEqual(page_one_slice, ["A", "B", "C", "D"] * 9 + ["A", "B", "C", "D", "A", "B", "C", "D", "A", "B"])
+
+        page_two_slice = get_answer_key_for_question_slice(full_answer_key, 40, 39)
+        self.assertEqual(page_two_slice[0], "A")
+        self.assertEqual(page_two_slice[-1], "C")
+        self.assertEqual(len(page_two_slice), 39)
+
+        short_key = ["A", "B", "C"]
+        self.assertEqual(get_answer_key_for_question_slice(short_key, 1, 10), ["A", "B", "C"])
+
+    def test_insert_questions_for_worksheet_allows_omr_questions_without_skill_code(self):
+        from db.flows import add_worksheet_to_db
+        from db.questions import get_questions_for_worksheet
+
+        worksheet = {
+            "title": "OMR Regression",
+            "worksheet_category": "omr",
+            "template_name": "basic_omr",
+            "questions": [
+                {"index": 1, "question_text": "", "options": ["", "", "", ""], "correct_option": "A"},
+                {"index": 2, "question_text": "", "options": ["", "", "", ""], "correct_option": "B"},
+            ],
+        }
+
+        worksheet_id = 990000 + (time.time_ns() % 100000)
+        result = add_worksheet_to_db(worksheet, worksheet_id=worksheet_id, worksheet_category="omr")
+        self.assertEqual(len(result["question_ids"]), 2)
+
+        rows = get_questions_for_worksheet(result["worksheet_id"])
+        self.assertEqual(len(rows), 2)
+        self.assertTrue(all(r["skill_code"] == "omr" for r in rows))
 
 
 if __name__ == "__main__":
