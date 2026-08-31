@@ -149,6 +149,14 @@ class BatchAndBulkInsertScriptTests(unittest.TestCase):
         self.assertIn("40.", html)
         self.assertGreaterEqual(html.count("class='question_td'"), 3)
 
+    def test_omr_row_tags_include_page_metadata_for_page_two(self):
+        image_service = load_module("services.image_service", ROOT / "services" / "image_service.py")
+
+        row_tags = image_service.worksheet_id_to_rows(1234, page_no=2, first_question_index=40)
+        self.assertEqual(len(row_tags), 13)
+        self.assertEqual(image_service.decode_row_tag_metadata(row_tags)["page_no"], 2)
+        self.assertEqual(image_service.decode_row_tag_metadata(row_tags)["first_question_index"], 40)
+
     def test_question_paper_code_validation_requires_single_uppercase_letter_a_to_f(self):
         image_service = load_module("services.image_service", ROOT / "services" / "image_service.py")
 

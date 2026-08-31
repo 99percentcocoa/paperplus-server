@@ -88,7 +88,11 @@ def generate_basic_omr_questions_html(
     if question_count == 0:
         return ""
 
-    row_tags = worksheet_id_to_rows(worksheet_id)
+    row_tags = worksheet_id_to_rows(
+        worksheet_id,
+        page_no=page_no if page_no is not None else 1,
+        first_question_index=first_question_index if first_question_index is not None else 1,
+    )
     logger.info("Generated row tags for worksheet %s: %s", worksheet_id, row_tags)
     rows_html = ""
     for row_index in range(0, question_count, 3):

@@ -196,12 +196,15 @@ def scan_image(input_image: InputImageMeta) -> WorksheetTemplate:
     """
 
     corner_detection_result = detect_apriltags(input_image, "36h11")
+    logger.info("Detected corner tags: %s", [tag.tag_id for tag in corner_detection_result.detections])
     cropped_image = crop_image(input_image, corner_detection_result)
     blurred_image = apply_median_blur(cropped_image)
     row_detection_result = detect_apriltags(cropped_image, "25h9")
 
     row_tags = [tag.tag_id for tag in row_detection_result.detections]
+    logger.info("Detected row tags: %s", row_tags)
     row_metadata = decode_row_tag_metadata(row_tags)
+    logger.info("Decoded row-tag metadata: %s", row_metadata)
     worksheet_id = row_metadata.get("worksheet_id")
     page_no = row_metadata.get("page_no")
     first_question_index = row_metadata.get("first_question_index")
@@ -512,10 +515,25 @@ def checksum(ids):
     digest = hashlib.sha256(bytes(ids)).digest()
     return [b % 35 for b in digest[:5]]
 
-def worksheet_id_to_rows(n: int):
+def worksheet_id_to_rows(n: int, page_no: int | None = None, first_question_index: int | None = None):
+    """Encode worksheet ID into row tags, optionally including OMR page metadata.
+
+    Legacy format: 10 tags = 5 data + 5 checksum.
+    OMR v2 format: 13 tags = legacy 10 tags + [page_no, first_question_index, reserved].
+    """
     data_tags = encode_worksheet_id_rows(n)
     check = checksum(data_tags)
-    return data_tags + check
+    legacy_tags = data_tags + check
+
+    if page_no is None and first_question_index is None:
+        return legacy_tags
+
+    page_no_value = max(1, int(page_no or 1))
+    first_question_index_value = max(1, int(first_question_index or 1))
+    if page_no_value == 1 and first_question_index_value == 1:
+        return legacy_tags
+
+    return legacy_tags + [page_no_value, first_question_index_value, 0]
 
 def decode_row_tag_metadata(tags):
     """Decode the worksheet ID and optional OMR page metadata from row tags.
@@ -545,6 +563,10 @@ def decode_row_tag_metadata(tags):
 
         page_no = int(tags[10]) if 0 <= tags[10] <= 9 else 1
         first_question_index = int(tags[11]) if 0 <= tags[11] <= 999 else 1
+        if page_no <= 0:
+            page_no = 1
+        if first_question_index <= 0:
+            first_question_index = 1
         return {
             "worksheet_id": value,
             "page_no": page_no,
