@@ -32,15 +32,6 @@ class Config:
     TARGET_WIDTH = 1240
     TARGET_HEIGHT = 1754
 
-    DEFAULT_NUM_QUESTIONS = 20
-    NUM_ROW_TAGS = 10
-
-    # roi format: (x_offset, y_offset, width, height)
-    LEFT_QUESTION_ROI = (85, -40, 485, 90)
-    RIGHT_QUESTION_ROI = (620, -40, 485, 90)
-
-    ROLL_NUMBER_ROI = (420, 1660, 850, 1754) # x1, y1, x2, y2
-
     # Worksheet levels map to difficulty level distributions
     # Keys are difficulty levels, values are proportions of 20 questions
     WORKSHEET_LEVEL_DISTRIBUTIONS = {

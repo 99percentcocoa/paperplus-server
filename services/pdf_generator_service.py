@@ -1,8 +1,6 @@
 import logging
-from weasyprint import HTML, CSS
 import json
 from config import SETTINGS
-from services.image_service import worksheet_id_to_rows
 
 ORIENTATION_ID = SETTINGS.ORIENTATION_ID
 TAGS_PATH = SETTINGS.TAGS_PATH
@@ -28,24 +26,24 @@ def open_worksheet(filename):
 # only for corner tags (36h11)
 def generate_tags_html(tag_ids, tags_folder_path=TAGS_PATH):
     tag_urls = [f"{tags_folder_path}/36h11/tag36_11_{str(id).zfill(5)}.svg" for id in tag_ids]
-    print(f"tag urls: {tag_urls}")
+    logger.info("Corner tag URLs: %s", tag_urls)
     tags_html = ""
 
-    print(f"Adding tags {tag_urls}")
-    tags_html += f'<div class="marker top-left" style="background-image: url({tag_urls[0]})"></div>\n'
-    tags_html += f'<div class="marker top-right" style="background-image: url({tag_urls[1]})""></div>\n'
-    tags_html += f'<div class="marker bottom-left" style="background-image: url({tag_urls[2]})"></div>\n'
-    tags_html += f'<div class="marker bottom-right" style="background-image: url({tag_urls[3]})"></div>\n'
+    tags_html += f'<img class="marker top-left" src="{tag_urls[0]}" alt="tag 0" />\n'
+    tags_html += f'<img class="marker top-right" src="{tag_urls[1]}" alt="tag 1" />\n'
+    tags_html += f'<img class="marker bottom-left" src="{tag_urls[2]}" alt="tag 2" />\n'
+    tags_html += f'<img class="marker bottom-right" src="{tag_urls[3]}" alt="tag 3" />\n'
 
+    logger.info("Added corner tags: %s", tag_urls)
     return tags_html
 
 # corner tags using cctag
 def generate_cctag_html(tag_ids=[0,1,2,3],tags_folder_path=TAGS_PATH):
     tag_urls = [f"{tags_folder_path}/cctags/{str(id).zfill(4)}.svg" for id in tag_ids]
-    print(f"tag urls: {tag_urls}")
+    logger.info("CC tag URLs: %s", tag_urls)
     tags_html = ""
 
-    print(f"Adding tags {tag_urls}")
+    logger.info("Adding CC tags: %s", tag_urls)
     tags_html += f'<div class="marker top-left"><img src="{tag_urls[0]}" style="width:100%;height:100%;" /></div>\n'
     tags_html += f'<div class="marker top-right"><img src="{tag_urls[1]}" style="width:100%;height:100%;" /></div>\n'
     tags_html += f'<div class="marker bottom-left"><img src="{tag_urls[2]}" style="width:100%;height:100%;" /></div>\n'
@@ -68,10 +66,67 @@ def generate_question_box(question, q_no):
 
     return option_html
 
+
+def generate_basic_omr_questions_html(
+    worksheet_id: int,
+    question_count: int = 20,
+    tags_folder_path: str = TAGS_PATH,
+    page_no: int = 1,
+    first_question_index: int = 1,
+):
+    """Build a blank answer-grid for the OMR template without question text or answer keys.
+
+    When `page_no` is greater than 1 or `first_question_index` is greater than 1,
+    the sheet continues numbering from that starting question index. This allows
+    multi-page OMR sheets such as page 2 starting at question 40.
+    """
+    from services.image_service import worksheet_id_to_rows
+
+    question_count = max(0, int(question_count or 0))
+    page_no = max(1, int(page_no or 1))
+    first_question_index = max(1, int(first_question_index or 1))
+    if question_count == 0:
+        return ""
+
+    row_tags = worksheet_id_to_rows(worksheet_id)
+    logger.info("Generated row tags for worksheet %s: %s", worksheet_id, row_tags)
+    rows_html = ""
+    for row_index in range(0, question_count, 3):
+        row_num = row_index // 3
+        row_tag_id = row_tags[row_num % len(row_tags)] if row_tags else 0
+        rows_html += "<tr>\n"
+
+        rows_html += "<td class='row-marker'>\n"
+        tag_url = f"{tags_folder_path}/25h9/tag25_09_{str(row_tag_id).zfill(5)}.svg"
+        logger.info("Adding row tag URL: %s", tag_url)
+        rows_html += f"<img class='marker' src='{tag_url}' alt='row tag' />\n"
+        rows_html += "</td>\n"
+
+        for offset in range(3):
+            q_no = first_question_index + row_index + offset
+            if q_no - first_question_index >= question_count:
+                break
+
+            rows_html += "<td class='question_td'>\n <div class='question'>\n"
+            rows_html += f"<p>{q_no}.</p>"
+            rows_html += "<table class='options-table'>\n <tr>"
+            rows_html += "<td><div class='circle'></div>A</td>"
+            rows_html += "<td><div class='circle'></div>B</td>"
+            rows_html += "<td><div class='circle'></div>C</td>"
+            rows_html += "<td><div class='circle'></div>D</td>"
+            rows_html += "</tr>\n </table>"
+            rows_html += "</div>\n </td>\n"
+
+        rows_html += "</tr>\n"
+
+    return rows_html
+
 # now embed the ID in the question tags
 def generate_questions_html(worksheet_id, questions, tags_folder_path=TAGS_PATH):
+    from services.image_service import worksheet_id_to_rows
+
     row_tags = worksheet_id_to_rows(worksheet_id)
-    print(f"Row tags: {row_tags}")
+    logger.info("Row tags: %s", row_tags)
     rows_html = ""
 
     if len(questions) != 20:
@@ -82,11 +137,12 @@ def generate_questions_html(worksheet_id, questions, tags_folder_path=TAGS_PATH)
         q2 = questions[i+1] if i+1 < len(questions) else None
         rows_html += "<tr>\n"
         row_num = i // 2
+        row_tag_id = row_tags[row_num % len(row_tags)] if row_tags else 0
         # add two markers per row
 
         rows_html += "<td class='row-marker'>\n"
-        tag_url = f"{tags_folder_path}/25h9/tag25_09_{str(row_tags[row_num]).zfill(5)}.svg"
-        print(f"Adding {tag_url}")
+        tag_url = f"{tags_folder_path}/25h9/tag25_09_{str(row_tag_id).zfill(5)}.svg"
+        logger.info("Adding %s", tag_url)
         rows_html += f"<div class='marker' style='background-image: url({tag_url})'></div>\n"
         rows_html += "</td>\n"
 

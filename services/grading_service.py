@@ -19,6 +19,7 @@ from services.logging_service import log_to_sheet
 from services.inference import predict_bubble
 from config import SETTINGS
 from models import InputImageMeta, DetectionResult, WorksheetTemplate, ROI
+from template_layouts import get_question_rois_for_template
 
 logger = logging.getLogger(__name__)
 
@@ -28,9 +29,6 @@ SERVER_IP = SETTINGS.SERVER_IP
 
 BUBBLES_FOLDER = Path(__file__).parent.parent / "bubbles"
 
-# OMR Configuration
-LEFT_QUESTION_ROI = SETTINGS.LEFT_QUESTION_ROI
-RIGHT_QUESTION_ROI = SETTINGS.RIGHT_QUESTION_ROI
 def detect_bubble_inference(roi_image: InputImageMeta, debug=False, question_number=0) -> str:
     """
     Detect which bubble (A, B, C, D) is filled in a question region using inference.
@@ -98,7 +96,7 @@ def check_worksheet(worksheet_meta: WorksheetTemplate, debug=False) -> Tuple[Lis
     answers = []
     score:List[int] = []
 
-    roi_coordinates = get_roi_coordinates(worksheet_meta.row_detections)
+    roi_coordinates = get_roi_coordinates(worksheet_meta.row_detections, worksheet_meta.template_name)
     logging.debug("Extracted %s ROI images for OMR processing.", len(roi_coordinates))
 
     # debug image, PIL setup
@@ -220,33 +218,27 @@ def check_worksheet(worksheet_meta: WorksheetTemplate, debug=False) -> Tuple[Lis
 
 
 # OMR Detection Functions
-def show_roi_zones(points, debug_image):
+def show_roi_zones(points, debug_image, template_name: str | None = None):
     """Show ROI zones for debugging purposes.
 
     Args:
         points: Tag center points
         debug_image: Debug image to draw on
+        template_name: Template whose ROI geometry is being displayed
     """
+    question_rois = get_question_rois_for_template(template_name)
     for point in points:
         (point_x, point_y) = point
 
-        # draw left ROI
-        (left_rx, left_ry, left_rw, left_rh) = LEFT_QUESTION_ROI
-        left_x1 = point_x + left_rx
-        left_y1 = point_y + left_ry
-        left_x2 = left_x1 + left_rw
-        left_y2 = left_y1 + left_rh
+        for i, roi in enumerate(question_rois):
+            (rx, ry, rw, rh) = roi
+            x1 = point_x + rx
+            y1 = point_y + ry
+            x2 = x1 + rw
+            y2 = y1 + rh
 
-        # draw red rectangle on left ROI
-        cv2.rectangle(debug_image, (left_x1, left_y1), (left_x2, left_y2), (255, 0, 0), 2)
-
-        # draw right ROI
-        (right_rx, right_ry, right_rw, right_rh) = RIGHT_QUESTION_ROI
-        right_x1 = point_x + right_rx
-        right_y1 = point_y + right_ry
-        right_x2 = right_x1 + right_rw
-        right_y2 = right_y1 + right_rh
-
-        # draw red rectangle on right ROI
-        cv2.rectangle(debug_image, (right_x1, right_y1), (right_x2, right_y2), (255, 0, 0), 2)
+            color = (255, 0, 0)
+            if i == 1:
+                color = (0, 255, 0)
+            cv2.rectangle(debug_image, (x1, y1), (x2, y2), color, 2)
 

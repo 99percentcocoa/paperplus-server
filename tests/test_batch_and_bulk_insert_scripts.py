@@ -3,6 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from template_layouts import get_handwritten_field_roi, get_template_layout
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -91,6 +92,61 @@ class BatchAndBulkInsertScriptTests(unittest.TestCase):
             generator._resolve_template_filename({"worksheet_category": "omr"}, "basic_omr", None),
             ("basic_omr", "template_en.html"),
         )
+
+    def test_basic_omr_prefers_actual_question_list_length_over_stale_question_count(self):
+        generator = load_worksheet_pdf_generator_module()
+        worksheet = {
+            "worksheet_category": "omr",
+            "template_name": "basic_omr",
+            "question_count": 20,
+            "questions": [{"index": i, "question_text": "", "options": ["", "", "", ""], "correct_option": ""} for i in range(1, 31)],
+        }
+
+        self.assertEqual(generator._resolve_question_count(worksheet), 30)
+
+    def test_basic_omr_handles_more_than_available_row_tags(self):
+        generator = load_worksheet_pdf_generator_module()
+
+        html = generator.generate_basic_omr_questions_html(worksheet_id=1, question_count=39)
+
+        self.assertIn("tag25_09_", html)
+        self.assertGreaterEqual(html.count("class='row-marker'"), 13)
+
+    def test_template_layouts_override_roi_settings_per_template(self):
+        layout = get_template_layout("basic_omr")
+        self.assertGreaterEqual(len(layout.question_roi_columns), 3)
+        self.assertEqual(layout.question_roi_columns[0], (85, -40, 485, 90))
+        self.assertEqual(layout.question_roi_columns[1], (355, -40, 485, 90))
+        self.assertEqual(layout.question_roi_columns[2], (620, -40, 485, 90))
+        self.assertTrue(get_handwritten_field_roi("basic_omr", "question_paper_code") is None or isinstance(get_handwritten_field_roi("basic_omr", "question_paper_code"), tuple))
+
+    def test_row_tag_decoder_supports_legacy_and_13_tag_layout(self):
+        image_service = load_module("services.image_service", ROOT / "services" / "image_service.py")
+
+        legacy_row_tags = image_service.worksheet_id_to_rows(1234)
+        self.assertEqual(image_service.decode_row_tags(legacy_row_tags), 1234)
+
+        extended_row_tags = legacy_row_tags + [2, 40, 0]
+        decoded = image_service.decode_row_tag_metadata(extended_row_tags)
+        self.assertEqual(decoded["worksheet_id"], 1234)
+        self.assertEqual(decoded["page_no"], 2)
+        self.assertEqual(decoded["first_question_index"], 40)
+
+        with self.assertRaises(ValueError):
+            image_service.decode_row_tags([1, 2, 3])
+
+    def test_basic_omr_pages_continue_question_numbers(self):
+        generator = load_worksheet_pdf_generator_module()
+
+        html = generator.generate_basic_omr_questions_html(
+            worksheet_id=1,
+            question_count=39,
+            page_no=2,
+            first_question_index=40,
+        )
+
+        self.assertIn("40.", html)
+        self.assertGreaterEqual(html.count("class='question_td'"), 3)
 
 
 if __name__ == "__main__":

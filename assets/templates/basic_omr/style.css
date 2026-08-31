@@ -129,16 +129,23 @@ header .marker {
   right: 10px;
 }
 
-/* roll number box */
+/* handwritten fields offset from the page corners */
+.question-paper-id-box,
 .roll-no-box {
   position: fixed;
+  bottom: 10mm;
   border: 2px solid black;
   height: 10mm;
+}
+
+.question-paper-id-box {
+  width: 20mm;
+  left: 30mm;
+}
+
+.roll-no-box {
   width: 30mm;
-  bottom: 10mm;
-  left: 50%;
-  transform: translateX(-50%);
-  /* left: 15mm; */
+  right: 30mm;
 }
 
 /* instructions container div */
@@ -194,17 +201,20 @@ header .marker {
   margin-bottom: 1mm;
 }
 
-/* Overall table for two columns */
+/* Overall table for three question columns plus a row marker */
 .questions-table {
   width: 90%;
   border-collapse: separate;
-  border-spacing: 5px 10px; /* note: the vertical spacing applies to the first element also */
+  border-spacing: 4px 7px;
   table-layout: fixed;
   margin: 0px auto;
-  padding-bottom: 5px;
+  padding-bottom: 2px;
   border-bottom: 2px solid black;
-  /* margin-top: 0px;
-  margin-left: 6mm; */
+}
+
+.question_td {
+  width: 31%;
+  vertical-align: top;
 }
 
 /* red border for debugging */
@@ -223,23 +233,26 @@ header .marker {
 which we don't want for row markers */
 .row-marker .marker {
   position: relative;
-  /* margin: 0 auto; - remove this comment to center the marker horizontally - but then change the ROIs */
+  display: block;
+  width: 10mm;
+  height: 10mm;
+  margin: 0 auto;
 }
 
 /* Question box styling */
 .question {
   border: 1px solid #000;
   border-radius: 5px;
-  padding: 6px 0px;
+  padding: 4px 0px 2px;
   page-break-inside: avoid;
-
-  height: 15mm;
-  min-height: 15mm;
+  height: 12mm;
+  min-height: 12mm;
 }
 
 .question p {
-  margin: 0 0 5px 1mm;
+  margin: 0 0 3px 1mm;
   font-weight: bold;
+  line-height: 1.1;
 }
 
 .assessment-fields {
@@ -286,17 +299,19 @@ which we don't want for row markers */
 .options-table td {
   text-align: center;
   vertical-align: top;
-  padding: 0;          /* remove extra padding */
-  width: 25%;           /* 4 options */
-  word-wrap: break-word; 
+  padding: 0;
+  width: 25%;
+  word-wrap: break-word;
+  font-size: 10px;
+  line-height: 1.1;
 }
 
 /* Circle styling */
 .circle {
-  width: 13px;
-  height: 13px;
-  border: 2.5px solid #000;
+  width: 11px;
+  height: 11px;
+  border: 2px solid #000;
   border-radius: 50%;
   display: block;
-  margin: 2px auto 2px auto; /* top & bottom small margin only, centered horizontally */
+  margin: 1px auto 1px auto;
 }

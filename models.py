@@ -4,6 +4,7 @@ from typing import List, Optional
 from pathlib import Path
 
 from config import SETTINGS
+from template_layouts import get_template_layout
 
 import cv2
 import numpy as np
@@ -33,6 +34,7 @@ class InvalidWorksheetError(ValueError):
 
 class InvalidSubmissionDataError(ValueError):
     """Raised when submission data (score, answers_json, etc.) is malformed."""
+
 
 @dataclass
 class InputImageMeta:
@@ -132,7 +134,7 @@ class DetectionResult:
             self.sorted_corner_detections = sort_detections_clockwise(self.detections)
 
         elif self.tag_family == "25h9":
-            required_detections = SETTINGS.NUM_ROW_TAGS
+            required_detections = get_template_layout("regular").num_row_tags
             if num_detections < required_detections:
                 raise RowTagDetectionError(f"Tag family '25h9' requires at least {required_detections} detections, but got {num_detections}")
             
@@ -204,6 +206,10 @@ class WorksheetTemplate:
     checked_image_url: Optional[str] = None
     num_questions: Optional[int] = None
     worksheet_id: Optional[int] = None
+    template_name: Optional[str] = None
+    page_no: Optional[int] = None
+    first_question_index: Optional[int] = None
+    page_metadata: Optional[dict] = None
     marked_answers: Optional[List[str]] = None
     answer_key: Optional[List[str]] = None
     score: Optional[List[int]] = None

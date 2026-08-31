@@ -20,6 +20,8 @@ from PIL import Image, ImageDraw, ImageFont
 from config import SETTINGS
 from models import DetectionResult, InputImageMeta, WorksheetTemplate, ROI, RollNumberError
 from services.inference import predict_ocr
+from db.worksheets import record_worksheet_page_metadata
+from template_layouts import get_handwritten_field_roi, get_question_rois_for_template, get_template_layout
 
 logger = logging.getLogger(__name__)
 
@@ -32,8 +34,10 @@ DEBUG_PATH = SETTINGS.DEBUG_PATH
 CHECKED_PATH = SETTINGS.CHECKED_PATH
 SERVER_IP = SETTINGS.SERVER_IP
 
-LEFT_QUESTION_ROI = SETTINGS.LEFT_QUESTION_ROI
-RIGHT_QUESTION_ROI = SETTINGS.RIGHT_QUESTION_ROI
+legacy_template = get_template_layout("regular")
+LEFT_QUESTION_ROI = legacy_template.left_question_roi
+RIGHT_QUESTION_ROI = legacy_template.right_question_roi
+QUESTION_ROI_COLUMNS = list(legacy_template.question_roi_columns)
 
 # AprilTag detectors
 at_detector_36h11 = Detector(
@@ -181,21 +185,52 @@ def scan_image(input_image: InputImageMeta) -> WorksheetTemplate:
     blurred_image = apply_median_blur(cropped_image)
     row_detection_result = detect_apriltags(cropped_image, "25h9")
 
-    worksheet_id = decode_row_tags([tag.tag_id for tag in row_detection_result.detections])
+    row_tags = [tag.tag_id for tag in row_detection_result.detections]
+    row_metadata = decode_row_tag_metadata(row_tags)
+    worksheet_id = row_metadata.get("worksheet_id")
+    page_no = row_metadata.get("page_no")
+    first_question_index = row_metadata.get("first_question_index")
 
-    # get roll number by applying ocr inference. crop the roll number box using the defined ROI and run OCR on it
-    x1, y1, x2, y2 = SETTINGS.ROLL_NUMBER_ROI
+    template_name = "regular"
+    if worksheet_id is not None:
+        try:
+            from db.worksheets import get_worksheet_json
+            worksheet_json = get_worksheet_json(worksheet_id)
+            if isinstance(worksheet_json, dict):
+                template_name = (
+                    worksheet_json.get("template_name")
+                    or worksheet_json.get("template_type")
+                    or worksheet_json.get("worksheet_template")
+                    or "regular"
+                )
+        except Exception:  # pragma: no cover - defensive fallback
+            logger.debug("Could not resolve template name for worksheet %s from DB", worksheet_id, exc_info=True)
+
+    layout = get_template_layout(template_name)
+    roll_number_roi_spec = get_handwritten_field_roi(template_name, "roll_number")
+    if roll_number_roi_spec is None:
+        raise RollNumberError(f"No roll number ROI configured for template '{template_name}'.")
+
+    x1, y1, x2, y2 = roll_number_roi_spec
     roll_number_roi = cropped_image.image_array[y1:y2, x1:x2]
     if roll_number_roi.size == 0 or roll_number_roi.shape[0] == 0 or roll_number_roi.shape[1] == 0:
         raise RollNumberError(f"Roll number ROI is empty (shape={roll_number_roi.shape}); cannot run OCR.")
     roll_number_roi_meta = InputImageMeta(image_array=roll_number_roi)
     roll_number = predict_ocr(roll_number_roi_meta)
-    # roll_number = ""
 
     if not (isinstance(roll_number, str) and roll_number.isdigit() and len(roll_number) == 4):
         raise RollNumberError(f"Detected roll number '{roll_number}' is not a valid 4-digit number.")
 
     logger.debug("Roll number detected: %s", roll_number)
+
+    paper_code = ""
+    paper_code_roi_spec = get_handwritten_field_roi(template_name, "question_paper_code")
+    if paper_code_roi_spec is not None:
+        p_x1, p_y1, p_x2, p_y2 = paper_code_roi_spec
+        paper_code_roi = cropped_image.image_array[p_y1:p_y2, p_x1:p_x2]
+        if paper_code_roi.size > 0 and paper_code_roi.shape[0] > 0 and paper_code_roi.shape[1] > 0:
+            paper_code = predict_ocr(InputImageMeta(image_array=paper_code_roi)) or ""
+            logger.debug("Paper code detected: %s", paper_code)
 
     debug_image = cropped_image
 
@@ -209,9 +244,21 @@ def scan_image(input_image: InputImageMeta) -> WorksheetTemplate:
         corner_detections=corner_detection_result,
         row_detections=row_detection_result,
         worksheet_id=worksheet_id,
+        template_name=template_name,
+        page_no=page_no,
+        first_question_index=first_question_index,
+        page_metadata=row_metadata,
         debug_image=debug_image,
         checked_image=checked_image,
         roll_number=roll_number
+    )
+
+    record_worksheet_page_metadata(
+        worksheet_id=worksheet_id,
+        page_no=page_no,
+        first_question_index=first_question_index,
+        page_metadata=row_metadata,
+        expected_row_tag_count=13 if row_metadata.get("format") == "omr_v2" else 10,
     )
 
     return worksheet_template
@@ -302,26 +349,26 @@ def crop_image(input_image: InputImageMeta, detections: DetectionResult) -> tupl
     return InputImageMeta(image_array=warped_image)
 
 # get cropped ROI images from worksheet
-def get_roi_coordinates(row_detections: DetectionResult) -> list[ROI]:
-    """Get ROI coordinates for each question. Also draw on the ROIs in the debug file.
+def get_roi_coordinates(row_detections: DetectionResult, template_name: str | None = None) -> list[ROI]:
+    """Get ROI coordinates for each question, template-aware.
 
     Args:
         row_detections: Sorted detections of AprilTags representing rows
-    
+        template_name: Name of the template whose ROI geometry should be used
+
     Returns:
         List of ROI objects for each question's ROI
     """
     roi_coordinates = []
+    question_rois = get_question_rois_for_template(template_name)
 
-    # row_detections = worksheet_meta.row_detections.sorted_corner_detections
     logger.debug("Row detections for ROI cropping: %s", [d.tag_id for d in row_detections.detections])
 
     for i, detection in enumerate(row_detections.detections):
         logger.debug("In detection %d", i)
         anchor_x, anchor_y = detection.center
 
-        for _, roi in enumerate([LEFT_QUESTION_ROI, RIGHT_QUESTION_ROI]):
-
+        for roi in question_rois:
             (rx, ry, rw, rh) = roi
             x1 = int(anchor_x + rx)
             y1 = int(anchor_y + ry)
@@ -329,10 +376,6 @@ def get_roi_coordinates(row_detections: DetectionResult) -> list[ROI]:
             y2 = int(y1 + rh)
 
             logger.info("ROI coordinates: %s, %s to %s, %s.", x1, y1, x2, y2)
-
-            # draw green boundary around ROI in debug image
-            # cv2.rectangle(debug_image, (x1, y1), (x2, y2), (0, 255, 0), 2)
-
             roi_coordinates.append(ROI(x1, y1, x2, y2))
 
     return roi_coordinates
@@ -459,23 +502,51 @@ def worksheet_id_to_rows(n: int):
     check = checksum(data_tags)
     return data_tags + check
 
+def decode_row_tag_metadata(tags):
+    """Decode the worksheet ID and optional OMR page metadata from row tags.
+
+    Legacy format: exactly 10 tags = 5 data + 5 checksum
+    New format: exactly 13 tags = 10 legacy packet + 3 OMR metadata values
+    """
+    if len(tags) == 10:
+        data = tags[:5]
+        check = tags[5:]
+        if checksum(data) != check:
+            return {"worksheet_id": None, "page_no": None, "first_question_index": None, "format": "legacy"}
+        value = 0
+        for d in data:
+            value = value * 35 + d
+        return {"worksheet_id": value, "page_no": 1, "first_question_index": 1, "format": "legacy"}
+
+    if len(tags) == 13:
+        legacy_data = tags[:5]
+        legacy_check = tags[5:10]
+        if checksum(legacy_data) != legacy_check:
+            return {"worksheet_id": None, "page_no": None, "first_question_index": None, "format": "omr_v2"}
+
+        value = 0
+        for d in legacy_data:
+            value = value * 35 + d
+
+        page_no = int(tags[10]) if 0 <= tags[10] <= 9 else 1
+        first_question_index = int(tags[11]) if 0 <= tags[11] <= 999 else 1
+        return {
+            "worksheet_id": value,
+            "page_no": page_no,
+            "first_question_index": first_question_index,
+            "format": "omr_v2",
+        }
+
+    raise ValueError("Expected 10 tags (legacy) or 13 tags (OMR v2 metadata format)")
+
+
 def decode_row_tags(tags):
-    """Decode worksheet ID from 10 row tag IDs (5 data + 5 checksum). Returns None if checksum doesn't match."""
-    if len(tags) != 10:
-        raise ValueError("Expected 10 tags (5 data + 5 checksum)")
-    
-    data = tags[:5]
-    check = tags[5:]
+    """Decode worksheet ID from the legacy 10-tag layout or the newer 13-tag layout.
 
-    if checksum(data) != check:
-        return None
-    
-    value = 0
-
-    for d in data:
-        value = value * 35 + d
-    
-    return value
+    Returns the worksheet_id for both formats. Invalid checksums return None.
+    """
+    metadata = decode_row_tag_metadata(tags)
+    return metadata.get("worksheet_id")
 
 # def encode_worksheet_id(n: int):
 #     """Return tag IDs for TR, BR, BL given worksheet_id n.
@@ -586,10 +657,18 @@ def save_debug(worksheet_meta: WorksheetTemplate) -> None:
     debug_filepath = Path(SETTINGS.DEBUG_PATH) / debug_filename
     debug_url = f"http://{SERVER_IP}:3000/debug/{debug_filename}"
 
-    # Draw roll number ROI on the debug image
-    x1, y1, x2, y2 = SETTINGS.ROLL_NUMBER_ROI
+    # Draw the template-specific handwritten ROIs for debugging.
+    roll_number_roi = get_handwritten_field_roi(worksheet_meta.template_name, "roll_number")
     debug_arr = worksheet_meta.debug_image.image_array.copy()
-    cv2.rectangle(debug_arr, (x1, y1), (x2, y2), (0, 255, 0), 3)
+    if roll_number_roi is not None:
+        x1, y1, x2, y2 = roll_number_roi
+        cv2.rectangle(debug_arr, (x1, y1), (x2, y2), (0, 255, 0), 3)
+
+    question_paper_code_roi = get_handwritten_field_roi(worksheet_meta.template_name, "question_paper_code")
+    if question_paper_code_roi is not None:
+        x1, y1, x2, y2 = question_paper_code_roi
+        cv2.rectangle(debug_arr, (x1, y1), (x2, y2), (0, 0, 255), 3)
+
     worksheet_meta.debug_image = InputImageMeta(image_array=debug_arr)
 
     worksheet_meta.debug_image.save(debug_filepath)

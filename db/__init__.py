@@ -20,7 +20,17 @@ from .migrations import run_migrations
 from .schools import upsert_school, get_school, list_schools
 from .students import upsert_student, get_student, update_student_level, deactivate_student, list_students, normalize_student_id, next_student_id
 from .skills import upsert_skill, get_skill, list_skills, import_skills_from_json
-from .worksheets import create_worksheet, check_test, get_worksheet, get_worksheet_json, get_answer_key, list_worksheets
+from .worksheets import (
+    create_worksheet,
+    check_test,
+    get_worksheet,
+    get_worksheet_json,
+    get_worksheet_page,
+    get_worksheet_pages,
+    get_answer_key,
+    list_worksheets,
+    upsert_worksheet_page,
+)
 from .questions import insert_questions_for_worksheet, get_questions_for_worksheet, get_question
 from .submissions import create_submission, get_submission, get_submissions_for_worksheet, get_latest_submission, get_latest_submission_by_worksheet, overwrite_submission
 from .scan_reviews import create_scan_review, get_scan_review, list_scan_reviews, correct_scan_review
@@ -60,8 +70,11 @@ __all__ = [
     "check_test",
     "get_worksheet",
     "get_worksheet_json",
+    "get_worksheet_page",
+    "get_worksheet_pages",
     "get_answer_key",
     "list_worksheets",
+    "upsert_worksheet_page",
     # Questions
     "insert_questions_for_worksheet",
     "get_questions_for_worksheet",
