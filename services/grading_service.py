@@ -72,8 +72,6 @@ def detect_bubble_inference(roi_image: InputImageMeta, debug=False, question_num
             BUBBLES_FOLDER.mkdir(parents=True, exist_ok=True)
             bubble_image_path = BUBBLES_FOLDER / f"q{question_number:02d}_bubble_{option_labels[b_idx]}.png"
             bubble.save(bubble_image_path)
-        
-        logging.info("Bubble %s: %s with confidence %.2f%%. Probability: %.4f", option_labels[b_idx], bubble_prediction[1], bubble_prediction[2], bubble_prediction[3])
 
     if len(marked_options) == 1:
         return marked_options[0]
