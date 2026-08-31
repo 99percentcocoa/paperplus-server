@@ -7,6 +7,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def load_worksheet_pdf_generator_module():
+    return load_module("worksheet_pdf_generator", ROOT / "worksheet_pdf_generator.py")
+
+
 def load_module(module_name: str, path: Path):
     spec = importlib.util.spec_from_file_location(module_name, path)
     module = importlib.util.module_from_spec(spec)
@@ -79,6 +83,14 @@ class BatchAndBulkInsertScriptTests(unittest.TestCase):
             files = bulk.iter_generated_files(subfolder="nested")
             self.assertEqual([p.name for p in files], ["8001_en.json"])
             self.assertEqual(files[0].parent.name, "nested")
+
+    def test_resolve_template_filename_allows_basic_omr_without_language(self):
+        generator = load_worksheet_pdf_generator_module()
+
+        self.assertEqual(
+            generator._resolve_template_filename({"worksheet_category": "omr"}, "basic_omr", None),
+            ("basic_omr", "template_en.html"),
+        )
 
 
 if __name__ == "__main__":

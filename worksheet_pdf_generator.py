@@ -86,6 +86,10 @@ def _resolve_template_filename(
     if template_filename:
         return template_name, template_filename
 
+    if template_name == "basic_omr":
+        # OMR sheets are intentionally language-independent and may omit language metadata.
+        return template_name, "template_en.html"
+
     language = worksheet.get("language")
     if language == "en":
         return template_name, "template_en.html"
