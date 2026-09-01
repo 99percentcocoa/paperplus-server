@@ -127,11 +127,12 @@ class BatchAndBulkInsertScriptTests(unittest.TestCase):
         legacy_row_tags = image_service.worksheet_id_to_rows(1234)
         self.assertEqual(image_service.decode_row_tags(legacy_row_tags), 1234)
 
-        extended_row_tags = legacy_row_tags + [2, 40, 0]
+        extended_row_tags = legacy_row_tags + [2, 5, 1]
         decoded = image_service.decode_row_tag_metadata(extended_row_tags)
         self.assertEqual(decoded["worksheet_id"], 1234)
         self.assertEqual(decoded["page_no"], 2)
         self.assertEqual(decoded["first_question_index"], 40)
+        self.assertTrue(all(v <= 34 for v in extended_row_tags))
 
         with self.assertRaises(ValueError):
             image_service.decode_row_tags([1, 2, 3])
@@ -154,6 +155,7 @@ class BatchAndBulkInsertScriptTests(unittest.TestCase):
 
         row_tags = image_service.worksheet_id_to_rows(1234, page_no=2, first_question_index=40)
         self.assertEqual(len(row_tags), 13)
+        self.assertTrue(all(v <= 34 for v in row_tags))
         self.assertEqual(image_service.decode_row_tag_metadata(row_tags)["page_no"], 2)
         self.assertEqual(image_service.decode_row_tag_metadata(row_tags)["first_question_index"], 40)
 

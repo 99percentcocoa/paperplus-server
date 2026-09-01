@@ -518,8 +518,9 @@ def checksum(ids):
 def worksheet_id_to_rows(n: int, page_no: int | None = None, first_question_index: int | None = None):
     """Encode worksheet ID into row tags, optionally including OMR page metadata.
 
-    Legacy format: 10 tags = 5 data + 5 checksum.
-    OMR v2 format: 13 tags = legacy 10 tags + [page_no, first_question_index, reserved].
+    The 25h9 tag family only allows tag IDs in the range 0..34. Page metadata
+    therefore has to be packed into valid tag values instead of writing raw values
+    like 40 directly into the row-tag stream.
     """
     data_tags = encode_worksheet_id_rows(n)
     check = checksum(data_tags)
@@ -533,7 +534,12 @@ def worksheet_id_to_rows(n: int, page_no: int | None = None, first_question_inde
     if page_no_value == 1 and first_question_index_value == 1:
         return legacy_tags
 
-    return legacy_tags + [page_no_value, first_question_index_value, 0]
+    # 25h9 tags are only 0..34, so encode first_question_index in base-35 across
+    # two tag slots: value = low + high * 35. For first_question_index=40 we store
+    # [5, 1], which decodes back to 40 without violating the valid tag range.
+    low = first_question_index_value % 35
+    high = first_question_index_value // 35
+    return legacy_tags + [page_no_value, low, high]
 
 def decode_row_tag_metadata(tags):
     """Decode the worksheet ID and optional OMR page metadata from row tags.
@@ -562,7 +568,9 @@ def decode_row_tag_metadata(tags):
             value = value * 35 + d
 
         page_no = int(tags[10]) if 0 <= tags[10] <= 9 else 1
-        first_question_index = int(tags[11]) if 0 <= tags[11] <= 999 else 1
+        low = int(tags[11]) if 0 <= tags[11] <= 34 else 0
+        high = int(tags[12]) if 0 <= tags[12] <= 34 else 0
+        first_question_index = low + high * 35
         if page_no <= 0:
             page_no = 1
         if first_question_index <= 0:
