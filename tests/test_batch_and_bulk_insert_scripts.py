@@ -159,6 +159,15 @@ class BatchAndBulkInsertScriptTests(unittest.TestCase):
         self.assertEqual(image_service.decode_row_tag_metadata(row_tags)["page_no"], 2)
         self.assertEqual(image_service.decode_row_tag_metadata(row_tags)["first_question_index"], 40)
 
+    def test_page_one_metadata_does_not_allow_question_140_start_index(self):
+        image_service = load_module("services.image_service", ROOT / "services" / "image_service.py")
+
+        row_tags = [0, 0, 4, 2, 30, 24, 14, 12, 24, 0, 0, 0, 4]
+        decoded = image_service.decode_row_tag_metadata(row_tags)
+
+        self.assertEqual(decoded["page_no"], 1)
+        self.assertEqual(decoded["first_question_index"], 1)
+
     def test_question_paper_code_validation_requires_single_uppercase_letter_a_to_f(self):
         image_service = load_module("services.image_service", ROOT / "services" / "image_service.py")
 

@@ -531,7 +531,7 @@ def worksheet_id_to_rows(n: int, page_no: int | None = None, first_question_inde
 
     page_no_value = max(1, int(page_no or 1))
     first_question_index_value = max(1, int(first_question_index or 1))
-    if page_no_value == 1 and first_question_index_value == 1:
+    if page_no_value == 1:
         return legacy_tags
 
     # 25h9 tags are only 0..34, so encode first_question_index in base-35 across
@@ -573,6 +573,8 @@ def decode_row_tag_metadata(tags):
         first_question_index = low + high * 35
         if page_no <= 0:
             page_no = 1
+        if page_no == 1 and first_question_index != 1:
+            first_question_index = 1
         if first_question_index <= 0:
             first_question_index = 1
         return {
