@@ -23,6 +23,25 @@ from .students import get_student
 logger = logging.getLogger(__name__)
 
 
+def merge_answers_json(existing_answers: list[dict] | None, new_answers: list[dict] | None) -> list[dict]:
+    """Merge answer payloads by question_index, keeping the newest value for duplicates."""
+    merged: dict[int, dict] = {}
+    for payload in (existing_answers or [], new_answers or []):
+        if not isinstance(payload, list):
+            continue
+        for ans in payload:
+            if not isinstance(ans, dict):
+                continue
+            try:
+                q_index = int(ans.get("question_index", 0))
+            except (TypeError, ValueError):
+                continue
+            if q_index <= 0:
+                continue
+            merged[q_index] = ans
+    return [merged[q] for q in sorted(merged)]
+
+
 def add_worksheet_to_db(worksheet_json: dict | list,
                         is_test: bool = False,
                         worksheet_id: int = None,
@@ -106,13 +125,25 @@ def process_submission(student_id: str, worksheet_id: int, score: int,
 
     existing = get_latest_submission(student_id, worksheet_id)
     if existing is not None:
-        logger.info(
-            "Student %s resubmitted worksheet %s; overwriting submission %s instead of duplicating attempts.",
-            student_id, worksheet_id, existing["submission_id"],
-        )
-        submission_id = existing["submission_id"]
-        delete_attempts_for_submission(submission_id)
-        overwrite_submission(submission_id, score, answers_json)
+        existing_answers = existing.get("answers_json") or []
+        if worksheet_category == "omr" and any(int(ans.get("question_index", 0)) > 39 for ans in answers_json if isinstance(ans, dict)):
+            merged_answers = merge_answers_json(existing_answers, answers_json)
+            logger.info(
+                "Student %s submitted page 2 for worksheet %s; merging with prior %s answers instead of overwriting.",
+                student_id, worksheet_id, len(existing_answers),
+            )
+            submission_id = existing["submission_id"]
+            delete_attempts_for_submission(submission_id)
+            overwrite_submission(submission_id, sum(1 for ans in merged_answers if ans.get("is_correct")), merged_answers)
+            answers_json = merged_answers
+        else:
+            logger.info(
+                "Student %s resubmitted worksheet %s; overwriting submission %s instead of duplicating attempts.",
+                student_id, worksheet_id, existing["submission_id"],
+            )
+            submission_id = existing["submission_id"]
+            delete_attempts_for_submission(submission_id)
+            overwrite_submission(submission_id, score, answers_json)
     else:
         submission_id = create_submission(
             student_id,
@@ -186,9 +217,15 @@ def overwrite_submission_flow(student_id: str, worksheet_id: int, score: int,
         return process_submission(student_id, worksheet_id, score, "", answers_json)
 
     submission_id = existing["submission_id"]
-
-    delete_attempts_for_submission(submission_id)
-    overwrite_submission(submission_id, score, answers_json)
+    existing_answers = existing.get("answers_json") or []
+    if existing.get("worksheet_category") == "omr" and any(int(ans.get("question_index", 0)) > 39 for ans in answers_json if isinstance(ans, dict)):
+        merged_answers = merge_answers_json(existing_answers, answers_json)
+        delete_attempts_for_submission(submission_id)
+        overwrite_submission(submission_id, sum(1 for ans in merged_answers if ans.get("is_correct")), merged_answers)
+        answers_json = merged_answers
+    else:
+        delete_attempts_for_submission(submission_id)
+        overwrite_submission(submission_id, score, answers_json)
 
     questions = get_questions_for_worksheet(worksheet_id)
     attempts = []

@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import tempfile
 import time
 import unittest
@@ -213,6 +214,56 @@ class BatchAndBulkInsertScriptTests(unittest.TestCase):
         self.assertEqual(resolve_answer_key_for_template("basic_omr", worksheet_id, "A"), ["A", "B", "C", "D"])
         self.assertEqual(resolve_answer_key_for_template("basic_omr", worksheet_id, "B"), ["D", "C", "B", "A"])
         self.assertIsNone(resolve_answer_key_for_template("basic_omr", worksheet_id, "Z"))
+
+    def test_get_combined_worksheet_answers_merges_page_1_and_page_2_for_worksheet_4810(self):
+        from db.connection import get_connection
+        from db.submissions import get_combined_worksheet_answers
+
+        page1 = [{"question_index": i, "selected_option": "A", "is_correct": True} for i in range(1, 40)]
+        page2 = [{"question_index": i, "selected_option": "B", "is_correct": False} for i in range(40, 79)]
+        inserted = []
+        student_ids = ["0001", "0002"]
+
+        try:
+            with get_connection() as conn:
+                with conn.cursor() as cur:
+                    for student_id, answers in zip(student_ids, [page1, page2]):
+                        cur.execute(
+                            """
+                            INSERT INTO submissions (student_id, worksheet_id, score, from_number, answers_json, worksheet_category)
+                            VALUES (%s, %s, %s, %s, %s, %s)
+                            RETURNING submission_id
+                            """,
+                            (student_id, 4810, len(answers), "", json.dumps(answers), "omr"),
+                        )
+                        inserted.append(cur.fetchone()["submission_id"])
+
+            combined = get_combined_worksheet_answers(4810)
+            indices = [item["question_index"] for item in combined]
+
+            self.assertEqual(indices[:3], [1, 2, 3])
+            self.assertEqual(indices[-3:], [76, 77, 78])
+            self.assertEqual(len(combined), 78)
+            self.assertEqual(min(indices), 1)
+            self.assertEqual(max(indices), 78)
+        finally:
+            with get_connection() as conn:
+                with conn.cursor() as cur:
+                    if inserted:
+                        cur.execute(
+                            "DELETE FROM submissions WHERE submission_id = ANY(%s)",
+                            (inserted,),
+                        )
+
+    def test_build_submission_answers_keeps_page_two_question_numbers(self):
+        from offline_pipeline import build_submission_answers
+
+        payload = build_submission_answers(["A", "", "C"], first_question_index=40)
+
+        self.assertEqual([item["question_index"] for item in payload], [40, 41, 42])
+        self.assertEqual(payload[0]["selected_option"], "A")
+        self.assertEqual(payload[1]["selected_option"], "")
+        self.assertEqual(payload[2]["selected_option"], "C")
 
     def test_basic_omr_grading_uses_first_question_index_and_truncates_short_answer_key(self):
         from services.grading_service import get_answer_key_for_question_slice

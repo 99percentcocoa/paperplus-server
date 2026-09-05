@@ -77,6 +77,74 @@ def get_latest_submission_by_worksheet(worksheet_id: int) -> dict | None:
             return cur.fetchone()
 
 
+def get_combined_worksheet_answers(worksheet_id: int, student_id: str | None = None) -> list[dict]:
+    """Return every answer for a worksheet ordered by question number.
+
+    This combines multiple submitted scans for the same worksheet, which is needed
+    for multi-page OMR sheets where page 1 and page 2 are scanned separately.
+    If a question appears in more than one submission, the newest submission wins.
+    """
+    clauses = ["worksheet_id = %s"]
+    params = [worksheet_id]
+    if student_id:
+        clauses.append("student_id = %s")
+        params.append(student_id)
+
+    where = "WHERE " + " AND ".join(clauses)
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"SELECT * FROM submissions {where} ORDER BY submitted_at DESC, submission_id DESC",
+                params,
+            )
+            rows = cur.fetchall()
+
+    latest_by_question: dict[int, dict] = {}
+    for row in rows:
+        payload = row.get("answers_json")
+        if payload is None:
+            continue
+        if isinstance(payload, str):
+            try:
+                payload = json.loads(payload)
+            except (TypeError, ValueError):
+                continue
+        if not isinstance(payload, list):
+            continue
+
+        for item in payload:
+            if not isinstance(item, dict):
+                continue
+            try:
+                q_index = int(item.get("question_index", 0))
+            except (TypeError, ValueError):
+                continue
+            if q_index <= 0:
+                continue
+            latest_by_question[q_index] = {
+                "question_index": q_index,
+                "selected_option": item.get("selected_option", ""),
+                "is_correct": bool(item.get("is_correct", False)),
+                "student_id": row.get("student_id"),
+                "submission_id": row.get("submission_id"),
+            }
+
+    return [latest_by_question[q_index] for q_index in sorted(latest_by_question)]
+
+
+def get_worksheet_answers_and_score(worksheet_id: int, student_id: str | None = None) -> dict:
+    """Return the merged full answer list and combined total score for a worksheet."""
+    answers = get_combined_worksheet_answers(worksheet_id, student_id=student_id)
+    total_score = sum(1 for item in answers if item.get("is_correct"))
+    return {
+        "worksheet_id": worksheet_id,
+        "student_id": student_id,
+        "answers": answers,
+        "total_score": total_score,
+        "total_questions": len(answers),
+    }
+
+
 def overwrite_submission(submission_id: int, score: int, answers_json: dict | list):
     """Overwrite an existing submission's score and answers."""
     with get_connection() as conn:

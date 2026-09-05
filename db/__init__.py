@@ -35,7 +35,7 @@ from .worksheets import (
     upsert_worksheet_page,
 )
 from .questions import insert_questions_for_worksheet, get_questions_for_worksheet, get_question
-from .submissions import create_submission, get_submission, get_submissions_for_worksheet, get_latest_submission, get_latest_submission_by_worksheet, overwrite_submission
+from .submissions import create_submission, get_submission, get_submissions_for_worksheet, get_latest_submission, get_latest_submission_by_worksheet, get_combined_worksheet_answers, get_worksheet_answers_and_score, overwrite_submission
 from .scan_reviews import create_scan_review, get_scan_review, list_scan_reviews, correct_scan_review
 from .attempts import insert_attempts, delete_attempts_for_submission, get_attempts_for_submission
 from .mastery import update_skill_mastery, get_skill_mastery, recalculate_skill_mastery, get_level_mastery_average, get_level_skill_coverage, determine_level_change, evaluate_and_update_level
@@ -91,6 +91,8 @@ __all__ = [
     "get_submissions_for_worksheet",
     "get_latest_submission",
     "get_latest_submission_by_worksheet",
+    "get_combined_worksheet_answers",
+    "get_worksheet_answers_and_score",
     "overwrite_submission",
     # Scan reviews
     "create_scan_review",

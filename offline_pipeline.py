@@ -58,13 +58,19 @@ def configure_logging(output_folder: Path) -> Path:
 logger = logging.getLogger(__name__)
 
 
-def build_submission_answers(answers: list[str]) -> list[dict]:
-    """Convert detected answers into the production-style answers_json payload."""
+def build_submission_answers(answers: list[str], first_question_index: int = 1) -> list[dict]:
+    """Convert detected answers into the production-style answers_json payload.
+
+    For multi-page OMR sheets, page 2 continues numbering from its decoded
+    first_question_index (for example 40), rather than resetting to 1.
+    """
     payload = []
-    for index, answer in enumerate(answers or [], start=1):
+    start_index = max(1, int(first_question_index or 1))
+    for offset, answer in enumerate(answers or []):
+        question_index = start_index + offset
         normalized = str(answer or "").strip().upper()
         payload.append({
-            "question_index": index,
+            "question_index": question_index,
             "is_correct": bool(normalized),
             "selected_option": normalized if normalized else "",
         })
@@ -89,12 +95,13 @@ def persist_offline_submission(student_id: str | None, worksheet_id: int | None,
         )
         return None
 
+    first_question_index = getattr(worksheet_meta, "first_question_index", 1) or 1
     submission = process_submission(
         student_id=str(resolved_student_id),
         worksheet_id=int(resolved_worksheet_id),
         score=int(score),
         from_number=str(from_number or ""),
-        answers_json=build_submission_answers(answers),
+        answers_json=build_submission_answers(answers, first_question_index=first_question_index),
     )
     logger.info("Persisted offline submission to DB: %s", submission)
     return submission
