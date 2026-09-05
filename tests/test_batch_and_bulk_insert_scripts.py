@@ -178,6 +178,31 @@ class BatchAndBulkInsertScriptTests(unittest.TestCase):
         self.assertEqual(image_service.validate_question_paper_code("g"), "")
         self.assertEqual(image_service.validate_question_paper_code("3"), "")
 
+    def test_omr_v2_row_metadata_uses_basic_omr_template_when_worksheet_not_in_db(self):
+        image_service = load_module("services.image_service", ROOT / "services" / "image_service.py")
+
+        row_metadata = {"worksheet_id": 9999, "page_no": 2, "first_question_index": 40, "format": "omr_v2"}
+
+        self.assertEqual(image_service.infer_template_name_from_scan(9999, row_metadata, None), "basic_omr")
+
+    def test_setd_page1_roll_number_ocr_detects_9876(self):
+        image_service = load_module("services.image_service", ROOT / "services" / "image_service.py")
+        input_path = ROOT / "testing" / "images" / "setD_page1.jpeg"
+
+        worksheet = image_service.scan_image(image_service.InputImageMeta(image_path=str(input_path)))
+
+        self.assertEqual(worksheet.template_name, "basic_omr")
+        self.assertEqual(worksheet.roll_number, "9876")
+
+    def test_setd_page1_question_paper_code_ocr_detects_d(self):
+        image_service = load_module("services.image_service", ROOT / "services" / "image_service.py")
+        input_path = ROOT / "testing" / "images" / "setD_page1.jpeg"
+
+        worksheet = image_service.scan_image(image_service.InputImageMeta(image_path=str(input_path)))
+
+        self.assertEqual(worksheet.template_name, "basic_omr")
+        self.assertEqual(worksheet.question_paper_code, "D")
+
     def test_basic_omr_uses_question_paper_code_to_resolve_answer_key(self):
         from db.worksheets import save_omr_answer_key, resolve_answer_key_for_template
 

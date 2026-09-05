@@ -129,11 +129,9 @@ def predict_ocr(input_image: InputImageMeta):
     """
     Perform OCR on the input image using PaddleOCR.
 
-    Args:
-        input_image (InputImageMeta): The input image metadata for OCR.
-    
-    Returns:
-        str: The recognized text.
+    Handwritten single-character fields can fail on the raw image while succeeding
+    on a thresholded variant. We try the standard path first and then a small set
+    of normalized fallback variants so that the ROI can still be recognized.
     """
 
     if 'ocr' not in globals():
@@ -142,36 +140,69 @@ def predict_ocr(input_image: InputImageMeta):
     img = input_image.image_array
     if img is None:
         raise ValueError("Input image is empty; cannot perform OCR.")
-    
-    # Convert to RGB if needed
-    if len(img.shape) == 3 and img.shape[2] == 3:
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
-    # Perform OCR. PaddleOCR can occasionally throw a native C++ runtime error
-    # on a malformed or edge-case ROI. Treat that as "no valid text" so a
-    # higher-level RollNumberError can be raised cleanly instead of crashing the
-    # background webhook thread.
-    try:
-        result = ocr.predict(img)
-    except RuntimeError as exc:
-        logger.warning("OCR runtime failure on input image: %s", exc)
-        return ""
-    except Exception as exc:  # pragma: no cover - defensive fallback
-        logger.warning("OCR prediction failed unexpectedly: %s", exc)
+    def _extract_best_text(result):
+        try:
+            res = result[0]
+            rec_texts = res.get("rec_texts", [])
+            rec_scores = res.get("rec_scores", [])
+        except (IndexError, TypeError, AttributeError):
+            return ""
+
+        if rec_texts and rec_scores:
+            max_score_index = int(np.argmax(rec_scores))
+            return str(rec_texts[max_score_index]).strip()
         return ""
 
-    try:
-        res = result[0]
-        rec_texts = res.get("rec_texts", [])
-        rec_scores = res.get("rec_scores", [])
-    except (IndexError, TypeError, AttributeError):
-        return ""
+    def _prepare_variants(image):
+        variants = []
+        seen = set()
 
-    # get the rec_text corresponding to the highest rec_score
-    if rec_texts and rec_scores:
-        max_score_index = np.argmax(rec_scores)
-        best_text = rec_texts[max_score_index]
-        best_score = rec_scores[max_score_index]
-        return best_text
+        if len(image.shape) == 3:
+            rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+            variants.append(rgb)
+            variants.append(gray)
+        else:
+            gray = image
+            variants.append(gray)
+
+        if len(gray.shape) == 2:
+            blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+            thresh = cv2.adaptiveThreshold(
+                blurred,
+                255,
+                cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                cv2.THRESH_BINARY,
+                31,
+                10,
+            )
+            variants.extend([
+                cv2.cvtColor(thresh, cv2.COLOR_GRAY2RGB),
+                cv2.cvtColor(cv2.bitwise_not(thresh), cv2.COLOR_GRAY2RGB),
+            ])
+
+        ordered = []
+        for variant in variants:
+            key = (variant.shape, variant.dtype, variant.tobytes()[:64])
+            if key in seen:
+                continue
+            seen.add(key)
+            ordered.append(variant)
+        return ordered
+
+    for variant in _prepare_variants(img):
+        try:
+            result = ocr.predict(variant)
+        except RuntimeError as exc:
+            logger.warning("OCR runtime failure on input image: %s", exc)
+            continue
+        except Exception as exc:  # pragma: no cover - defensive fallback
+            logger.warning("OCR prediction failed unexpectedly: %s", exc)
+            continue
+
+        text = _extract_best_text(result)
+        if text:
+            return text
 
     return ""

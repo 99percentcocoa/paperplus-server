@@ -158,7 +158,17 @@ def process_worksheet(
         # Initialize input image metadata
         input_image = InputImageMeta(image_path=str(input_path))
         
-        # Step 1: Scan image (detect corner tags, dewarp, clean)
+# Step 1: Temporarily override output directories before scanning so OCR
+        # debug crops are saved even if the scan crashes partway through.
+        original_dewarped = SETTINGS.DEWARPED_PATH
+        original_debug = SETTINGS.DEBUG_PATH
+        original_checked = SETTINGS.CHECKED_PATH
+
+        SETTINGS.DEWARPED_PATH = str(dewarped_dir)
+        SETTINGS.DEBUG_PATH = str(debug_dir)
+        SETTINGS.CHECKED_PATH = str(checked_dir)
+        CROPPED_PATH = str(cropped_dir)
+
         logger.info("Step 1: Scanning image and detecting corner tags...")
         try:
             worksheet = scan_image(input_image)
@@ -172,16 +182,6 @@ def process_worksheet(
         except Exception as e:
             logger.exception("✗ Unexpected error during image scan: %s", e)
             return None
-        
-        # Step 2: Temporarily override output directories for save functions
-        original_dewarped = SETTINGS.DEWARPED_PATH
-        original_debug = SETTINGS.DEBUG_PATH
-        original_checked = SETTINGS.CHECKED_PATH
-        
-        SETTINGS.DEWARPED_PATH = str(dewarped_dir)
-        SETTINGS.DEBUG_PATH = str(debug_dir)
-        SETTINGS.CHECKED_PATH = str(checked_dir)
-        CROPPED_PATH = str(cropped_dir)
         
         # Override BUBBLES_FOLDER for this processing run
         from services import grading_service

@@ -80,6 +80,56 @@ def validate_question_paper_code(raw_value: str | None) -> str:
     return ""
 
 
+def save_ocr_roi_debug_images(cropped_image: InputImageMeta, template_name: str, input_path: str | None = None, debug_root: str | None = None) -> dict[str, str]:
+    """Save handwritten OCR crops for the guessed template and its common fallbacks.
+
+    This is intentionally conservative: if the template guess is wrong, or a field
+    falls outside the image bounds, we still save a debug crop (a placeholder black
+    image when needed) so the failure can be diagnosed without losing the ROI data.
+    """
+    base_dir = Path(debug_root or SETTINGS.DEBUG_PATH)
+    base_dir.mkdir(parents=True, exist_ok=True)
+    stem = Path(input_path).stem if input_path else "worksheet"
+    saved: dict[str, str] = {}
+
+    candidate_templates = []
+    for candidate in [template_name, "basic_omr", "regular"]:
+        if candidate and candidate not in candidate_templates:
+            candidate_templates.append(candidate)
+
+    for candidate_template in candidate_templates:
+        for field_name in ("roll_number", "question_paper_code"):
+            roi_spec = get_handwritten_field_roi(candidate_template, field_name)
+            if roi_spec is None:
+                continue
+
+            x1, y1, x2, y2 = roi_spec
+            h, w = cropped_image.image_array.shape[:2]
+            x1_c = max(0, min(w, x1))
+            x2_c = max(0, min(w, x2))
+            y1_c = max(0, min(h, y1))
+            y2_c = max(0, min(h, y2))
+
+            roi_image = cropped_image.image_array[y1_c:y2_c, x1_c:x2_c]
+            if roi_image.size == 0 or roi_image.shape[0] == 0 or roi_image.shape[1] == 0:
+                logger.warning(
+                    "OCR ROI for %s/%s was empty after clipping; saving a placeholder black image. coords=%s image_shape=%s",
+                    candidate_template,
+                    field_name,
+                    roi_spec,
+                    cropped_image.image_array.shape[:2],
+                )
+                roi_image = np.zeros((max(1, y2 - y1), max(1, x2 - x1), 3), dtype=np.uint8)
+
+            filename = f"{stem}_{candidate_template}_{field_name}_roi.jpg"
+            filepath = base_dir / filename
+            cv2.imwrite(str(filepath), roi_image)
+            saved[f"{candidate_template}:{field_name}"] = str(filepath)
+            logger.info("Saved OCR ROI for %s/%s: %s", candidate_template, field_name, filepath)
+
+    return saved
+
+
 def detect_apriltags(input_image: InputImageMeta, tag_family: str) -> DetectionResult:
     """Detect AprilTags in the given input image.
 
@@ -183,6 +233,27 @@ def apply_median_blur(input_image: InputImageMeta, kernel_size: int = 31) -> Inp
     blurred_image = cv2.medianBlur(input_image.image_array, kernel_size)
     return InputImageMeta(image_array=blurred_image)
 
+def infer_template_name_from_scan(worksheet_id: int | None, row_metadata: dict | None, worksheet_json: dict | None = None) -> str:
+    """Infer the worksheet template from the row-tag metadata when no worksheet record is available.
+
+    OMR v2 row tags carry explicit page metadata, which identifies the new basic_omr format even
+    when the worksheet is not present in the database yet.
+    """
+    if isinstance(worksheet_json, dict):
+        template_name = (
+            worksheet_json.get("template_name")
+            or worksheet_json.get("template_type")
+            or worksheet_json.get("worksheet_template")
+        )
+        if template_name:
+            return str(template_name).strip().lower()
+
+    if row_metadata and row_metadata.get("format") == "omr_v2":
+        return "basic_omr"
+
+    return "regular"
+
+
 def scan_image(input_image: InputImageMeta) -> WorksheetTemplate:
     """Process image: dewarp and prepare for OMR.
 
@@ -210,21 +281,18 @@ def scan_image(input_image: InputImageMeta) -> WorksheetTemplate:
     first_question_index = row_metadata.get("first_question_index")
 
     template_name = "regular"
+    worksheet_json = None
     if worksheet_id is not None:
         try:
             from db.worksheets import get_worksheet_json
             worksheet_json = get_worksheet_json(worksheet_id)
-            if isinstance(worksheet_json, dict):
-                template_name = (
-                    worksheet_json.get("template_name")
-                    or worksheet_json.get("template_type")
-                    or worksheet_json.get("worksheet_template")
-                    or "regular"
-                )
         except Exception:  # pragma: no cover - defensive fallback
             logger.debug("Could not resolve template name for worksheet %s from DB", worksheet_id, exc_info=True)
+    template_name = infer_template_name_from_scan(worksheet_id, row_metadata, worksheet_json)
 
     layout = get_template_layout(template_name)
+    save_ocr_roi_debug_images(cropped_image, template_name, getattr(input_image, "image_path", None), SETTINGS.DEBUG_PATH)
+
     roll_number_roi_spec = get_handwritten_field_roi(template_name, "roll_number")
     if roll_number_roi_spec is None:
         raise RollNumberError(f"No roll number ROI configured for template '{template_name}'.")
@@ -234,7 +302,11 @@ def scan_image(input_image: InputImageMeta) -> WorksheetTemplate:
     if roll_number_roi.size == 0 or roll_number_roi.shape[0] == 0 or roll_number_roi.shape[1] == 0:
         raise RollNumberError(f"Roll number ROI is empty (shape={roll_number_roi.shape}); cannot run OCR.")
     roll_number_roi_meta = InputImageMeta(image_array=roll_number_roi)
-    roll_number = predict_ocr(roll_number_roi_meta)
+    try:
+        roll_number = predict_ocr(roll_number_roi_meta)
+    except Exception:
+        logger.exception("Roll number OCR failed for %s", input_image.image_path)
+        raise
 
     if not (isinstance(roll_number, str) and roll_number.isdigit() and len(roll_number) == 4):
         raise RollNumberError(f"Detected roll number '{roll_number}' is not a valid 4-digit number.")
@@ -247,7 +319,11 @@ def scan_image(input_image: InputImageMeta) -> WorksheetTemplate:
         p_x1, p_y1, p_x2, p_y2 = paper_code_roi_spec
         paper_code_roi = cropped_image.image_array[p_y1:p_y2, p_x1:p_x2]
         if paper_code_roi.size > 0 and paper_code_roi.shape[0] > 0 and paper_code_roi.shape[1] > 0:
-            raw_paper_code = predict_ocr(InputImageMeta(image_array=paper_code_roi)) or ""
+            try:
+                raw_paper_code = predict_ocr(InputImageMeta(image_array=paper_code_roi)) or ""
+            except Exception:
+                logger.exception("Question paper code OCR failed for %s", input_image.image_path)
+                raise
             paper_code = validate_question_paper_code(raw_paper_code)
             logger.debug("Paper code OCR returned %r; validated value: %r", raw_paper_code, paper_code)
 
