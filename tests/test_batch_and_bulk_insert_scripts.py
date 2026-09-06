@@ -302,6 +302,14 @@ class BatchAndBulkInsertScriptTests(unittest.TestCase):
         self.assertEqual(payload[1]["selected_option"], "")
         self.assertEqual(payload[2]["selected_option"], "C")
 
+    def test_predict_ocr_reinitializes_when_singleton_is_missing_or_stale(self):
+        import services.inference as inference
+
+        inference.ocr = None
+        self.assertIsNone(inference.ocr)
+        self.assertTrue(hasattr(inference, "init_ocr"))
+        inference.init_ocr()
+
     def test_basic_omr_grading_uses_first_question_index_and_truncates_short_answer_key(self):
         from services.grading_service import get_answer_key_for_question_slice
 

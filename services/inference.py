@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 interpreter = None
 input_details = None
 output_details = None
+ocr = None
 
 # def init_interpreter(model_path=Path(__file__).parent / "bubble_model_quantized.tflite"):
 def init_interpreter(model_path=Path(__file__).parent / "blur_model_optimized.tflite"):
@@ -115,7 +116,16 @@ def predict_bubble(input_bubble: InputImageMeta):
 # -- OCR --
 
 def init_ocr():
+    """Initialize the PaddleOCR singleton once.
+
+    A failed or partially initialized import should not leave a stale global state,
+    otherwise the first call after a previous failed attempt may behave differently
+    than the second call in the same process.
+    """
     global ocr
+    if ocr is not None:
+        return
+
     from paddleocr import PaddleOCR
     ocr = PaddleOCR(
         text_detection_model_name="PP-OCRv6_small_det",
@@ -124,6 +134,7 @@ def init_ocr():
         use_doc_unwarping=False,
         use_textline_orientation=False
     )
+
 
 def predict_ocr(input_image: InputImageMeta):
     """
@@ -134,7 +145,8 @@ def predict_ocr(input_image: InputImageMeta):
     of normalized fallback variants so that the ROI can still be recognized.
     """
 
-    if 'ocr' not in globals():
+    global ocr
+    if ocr is None or not hasattr(ocr, "predict"):
         init_ocr()
 
     img = input_image.image_array
@@ -143,10 +155,14 @@ def predict_ocr(input_image: InputImageMeta):
 
     def _extract_best_text(result):
         try:
+            if not isinstance(result, (list, tuple)) or not result:
+                return ""
             res = result[0]
+            if not isinstance(res, dict):
+                return ""
             rec_texts = res.get("rec_texts", [])
             rec_scores = res.get("rec_scores", [])
-        except (IndexError, TypeError, AttributeError):
+        except (IndexError, TypeError, AttributeError, ValueError):
             return ""
 
         if rec_texts and rec_scores:
