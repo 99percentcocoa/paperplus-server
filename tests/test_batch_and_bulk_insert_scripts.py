@@ -199,6 +199,14 @@ class BatchAndBulkInsertScriptTests(unittest.TestCase):
 
         self.assertEqual(image_service.infer_template_name_from_scan(9999, row_metadata, None), "basic_omr")
 
+    def test_omr_v2_row_metadata_overrides_stale_worksheet_template_name(self):
+        image_service = load_module("services.image_service", ROOT / "services" / "image_service.py")
+
+        row_metadata = {"worksheet_id": 4810, "page_no": 1, "first_question_index": 1, "format": "omr_v2"}
+        stale_worksheet_json = {"template_name": "regular", "worksheet_category": "omr"}
+
+        self.assertEqual(image_service.infer_template_name_from_scan(4810, row_metadata, stale_worksheet_json), "basic_omr")
+
     def test_setd_page1_roll_number_ocr_detects_9876(self):
         image_service = load_module("services.image_service", ROOT / "services" / "image_service.py")
         input_path = ROOT / "testing" / "images" / "setD_page1.jpeg"

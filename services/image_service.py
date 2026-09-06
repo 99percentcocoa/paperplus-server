@@ -234,11 +234,14 @@ def apply_median_blur(input_image: InputImageMeta, kernel_size: int = 31) -> Inp
     return InputImageMeta(image_array=blurred_image)
 
 def infer_template_name_from_scan(worksheet_id: int | None, row_metadata: dict | None, worksheet_json: dict | None = None) -> str:
-    """Infer the worksheet template from the row-tag metadata when no worksheet record is available.
+    """Infer the worksheet template from the live scan metadata before consulting any stored worksheet JSON.
 
-    OMR v2 row tags carry explicit page metadata, which identifies the new basic_omr format even
-    when the worksheet is not present in the database yet.
+    OMR v2 row tags carry explicit page metadata and should win over stale worksheet JSON, because
+    a worksheet record may still say "regular" even though the scanned sheet is a basic_omr layout.
     """
+    if row_metadata and row_metadata.get("format") == "omr_v2":
+        return "basic_omr"
+
     if isinstance(worksheet_json, dict):
         template_name = (
             worksheet_json.get("template_name")
@@ -247,9 +250,6 @@ def infer_template_name_from_scan(worksheet_id: int | None, row_metadata: dict |
         )
         if template_name:
             return str(template_name).strip().lower()
-
-    if row_metadata and row_metadata.get("format") == "omr_v2":
-        return "basic_omr"
 
     return "regular"
 
