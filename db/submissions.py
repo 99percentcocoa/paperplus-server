@@ -121,9 +121,12 @@ def get_combined_worksheet_answers(worksheet_id: int, student_id: str | None = N
                 continue
             if q_index <= 0:
                 continue
+            selected_option = item.get("selected_option")
+            if selected_option is None:
+                selected_option = item.get("answer", "")
             latest_by_question[q_index] = {
                 "question_index": q_index,
-                "selected_option": item.get("selected_option", ""),
+                "selected_option": selected_option,
                 "is_correct": bool(item.get("is_correct", False)),
                 "student_id": row.get("student_id"),
                 "submission_id": row.get("submission_id"),

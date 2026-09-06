@@ -25,6 +25,30 @@ DEWARPED_DIR = SETTINGS.DEWARPED_PATH
 _MESSAGE_LATENCY_HISTORY = []
 
 
+def build_submission_answers_for_worksheet(worksheet: WorksheetTemplate, answers: list[str], scores: list[int]) -> list[dict]:
+    """Build the persisted answer payload using each page's first_question_index.
+
+    This is required for multi-page OMR sheets: page 2 answers must continue at
+    question 40 instead of resetting to 1, otherwise the later page overwrites the
+    earlier one in the DB merge logic.
+    """
+    if worksheet is None:
+        return []
+
+    first_question_index = int(getattr(worksheet, "first_question_index", 1) or 1)
+    payload = []
+    for offset, (answer, is_correct) in enumerate(zip(answers or [], scores or [])):
+        question_index = first_question_index + offset
+        selected_option = str(answer or "")
+        payload.append({
+            "question_index": question_index,
+            "selected_option": selected_option,
+            "answer": selected_option,
+            "is_correct": bool(is_correct),
+        })
+    return payload
+
+
 def update_message_latency(from_number, received_at, response_sent_at, status='ok'):
     """Store message latency stats for dashboard monitoring."""
     if not received_at or not response_sent_at:
@@ -164,10 +188,7 @@ def handle_message(data, session_id):
                     # Successful checking!
 
                     # Process submission
-                    submission_answers = [
-                        {"question_index": i + 1, "answer": ans, "is_correct": bool(is_correct)}
-                        for i, (ans, is_correct) in enumerate(zip(answers, q_score))
-                    ]
+                    submission_answers = build_submission_answers_for_worksheet(worksheet, answers, q_score)
                     try:
                         with timing_context("process_submission", from_no=from_no, student_id=roll_number, worksheet_id=worksheet_id):
                             submission_result = process_submission(

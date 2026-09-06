@@ -207,6 +207,22 @@ class BatchAndBulkInsertScriptTests(unittest.TestCase):
 
         self.assertEqual(image_service.infer_template_name_from_scan(4810, row_metadata, stale_worksheet_json), "basic_omr")
 
+    def test_message_service_uses_first_question_index_for_page_two_submissions(self):
+        from models import InputImageMeta, WorksheetTemplate
+        from services.message_service import build_submission_answers_for_worksheet
+
+        worksheet = WorksheetTemplate(
+            input_image=InputImageMeta(image_path="/tmp/test.png"),
+            template_name="basic_omr",
+            first_question_index=40,
+        )
+
+        payload = build_submission_answers_for_worksheet(worksheet, ["A", "", "C"], [1, 0, 1])
+
+        self.assertEqual([item["question_index"] for item in payload], [40, 41, 42])
+        self.assertEqual([item["selected_option"] for item in payload], ["A", "", "C"])
+        self.assertEqual([item["is_correct"] for item in payload], [True, False, True])
+
     def test_setd_page1_roll_number_ocr_detects_9876(self):
         image_service = load_module("services.image_service", ROOT / "services" / "image_service.py")
         input_path = ROOT / "testing" / "images" / "setD_page1.jpeg"
