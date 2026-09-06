@@ -18,6 +18,15 @@ CREATE INDEX IF NOT EXISTS idx_omr_answer_sets_template_code
 CREATE INDEX IF NOT EXISTS idx_omr_answer_sets_worksheet_id
     ON omr_answer_sets (worksheet_id);
 
-ALTER TABLE omr_answer_sets
-    ADD CONSTRAINT omr_answer_sets_question_paper_code_valid
-    CHECK (question_paper_code ~ '^[A-F]$');
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'omr_answer_sets_question_paper_code_valid'
+    ) THEN
+        ALTER TABLE omr_answer_sets
+            ADD CONSTRAINT omr_answer_sets_question_paper_code_valid
+            CHECK (question_paper_code ~ '^[A-F]$');
+    END IF;
+END $$;

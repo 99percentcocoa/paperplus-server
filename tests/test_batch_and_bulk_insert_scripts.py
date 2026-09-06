@@ -179,6 +179,19 @@ class BatchAndBulkInsertScriptTests(unittest.TestCase):
         self.assertEqual(image_service.validate_question_paper_code("g"), "")
         self.assertEqual(image_service.validate_question_paper_code("3"), "")
 
+    def test_omr_answer_variants_migration_is_idempotent_when_reapplied(self):
+        from db.connection import get_connection
+
+        migration_sql = (ROOT / "db" / "migrations" / "010_omr_answer_variants.sql").read_text(encoding="utf-8")
+        temp_table = "omr_answer_sets_recheck_test"
+        replay_sql = migration_sql.replace("omr_answer_sets", temp_table)
+
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(f"DROP TABLE IF EXISTS {temp_table}")
+                cur.execute(replay_sql)
+                cur.execute(replay_sql)
+
     def test_omr_v2_row_metadata_uses_basic_omr_template_when_worksheet_not_in_db(self):
         image_service = load_module("services.image_service", ROOT / "services" / "image_service.py")
 
