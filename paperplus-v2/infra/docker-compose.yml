@@ -1,0 +1,47 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: paperplus
+      POSTGRES_PASSWORD: paperplus
+      POSTGRES_DB: paperplus_v2
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  api-service:
+    build: ../api-service
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://paperplus:paperplus@postgres:5432/paperplus_v2
+      VISION_SERVICE_URL: http://vision-service:8100
+    depends_on:
+      - postgres
+      - vision-service
+    volumes:
+      - files_data:/app/files
+    ports:
+      - "8000:8000"
+
+  vision-service:
+    build: ../vision-service
+    env_file: .env
+    volumes:
+      - files_data:/app/files
+    # Not exposed externally on purpose — only api-service (and nginx via api-service) reach it.
+    expose:
+      - "8100"
+
+  nginx:
+    image: nginx:alpine
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - api-service
+    ports:
+      - "80:80"
+
+volumes:
+  postgres_data:
+  files_data:
