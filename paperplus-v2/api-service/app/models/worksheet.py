@@ -89,16 +89,21 @@ class QuestionOption(SQLModel, table=True):
 
 
 class QuestionPaperVariant(SQLModel, table=True):
-    """Maps a scanned question-paper code to the shuffled option order for a question."""
+    """Per-variant correct answer for a question (basic_omr prints fixed A-F answer keys,
+    not per-copy shuffled bubbles — every printed copy of a variant shares one answer key).
+    """
 
     __tablename__ = "question_paper_variants"
-    __table_args__ = (CheckConstraint("question_paper_code ~ '^[A-F]$'", name="ck_qpv_code_valid"),)
+    __table_args__ = (
+        CheckConstraint("question_paper_code ~ '^[A-F]$'", name="ck_qpv_code_valid"),
+        UniqueConstraint("worksheet_id", "question_paper_code", "question_id"),
+    )
 
     id: int | None = Field(default=None, primary_key=True)
     worksheet_id: int = Field(foreign_key="worksheets.worksheet_id", index=True)
     question_paper_code: str
     question_id: int = Field(foreign_key="questions.question_id", index=True)
-    option_order: dict = Field(default_factory=dict, sa_column=Column(JSONB, nullable=False))
+    correct_option_label: str
 
 
 class OMRAnswerSet(SQLModel, table=True):

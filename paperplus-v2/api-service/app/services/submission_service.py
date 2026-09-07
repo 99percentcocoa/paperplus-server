@@ -72,7 +72,7 @@ def handle_incoming_image(
         comm_client.send_message(from_number, MESSAGES["invalid_worksheet"])
         return
 
-    answer_key = resolve_answer_key(session, worksheet.worksheet_id)
+    answer_key = resolve_answer_key(session, worksheet.worksheet_id, result.question_paper_code)
     scanned_answers, _scanned_score = grade_marks(result.question_marks, answer_key)
     page_range = resolve_page_range(session, worksheet.worksheet_id, result.page_no)
 
