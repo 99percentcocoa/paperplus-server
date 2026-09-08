@@ -4,7 +4,7 @@ CommunicationClient are faked so no real HTTP/Exotel calls happen.
 """
 
 import pytest
-from sqlmodel import Session, delete
+from sqlmodel import Session, delete, select
 
 from app.db.session import engine
 from app.models import (
@@ -164,6 +164,43 @@ def test_handle_incoming_image_reports_unrecognized_student(session: Session, wo
 
     assert len(comm_client.sent_messages) == 1
     assert "Roll number not recognized" in comm_client.sent_messages[0][1]
+    assert select_submission_ids(session, worksheet.worksheet_id) == []
+
+
+def test_handle_incoming_image_refuses_to_grade_with_no_answer_key(session: Session, worksheet_with_questions):
+    """A worksheet whose questions have no canonical is_correct option and no seeded
+    question_paper_variant for the scanned code must not silently grade everything wrong.
+    """
+    worksheet, student = worksheet_with_questions
+
+    # Strip the fixture's canonical answer key so resolve_answer_key finds nothing, simulating
+    # an OMR worksheet whose question-paper-code variant was never seeded.
+    for option in session.exec(select(QuestionOption).where(QuestionOption.question_id.in_(
+        select(Question.question_id).where(Question.worksheet_id == worksheet.worksheet_id)
+    ))).all():
+        option.is_correct = False
+        session.add(option)
+    session.commit()
+
+    result = ProcessingResult(
+        worksheet_id=worksheet.worksheet_id,
+        page_no=1,
+        first_question_index=1,
+        template_name="basic_omr",
+        roll_number=student.student_id,
+        roll_number_confidence=None,
+        question_paper_code="A",  # no question_paper_variant seeded for "A"
+        question_marks=[
+            QuestionMark(question_index=1, marked_option="A", confidence=0.9),
+            QuestionMark(question_index=2, marked_option="B", confidence=0.9),
+        ],
+    )
+
+    comm_client = FakeCommunicationClient()
+    handle_incoming_image(session, FakeVisionClient(result), comm_client, "+911234567890", "/fake/path.jpg", "corr-3")
+
+    assert len(comm_client.sent_messages) == 1
+    assert "not ready to be graded" in comm_client.sent_messages[0][1]
     assert select_submission_ids(session, worksheet.worksheet_id) == []
 
 

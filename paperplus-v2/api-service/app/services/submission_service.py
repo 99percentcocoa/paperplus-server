@@ -13,7 +13,7 @@ import logging
 
 from sqlmodel import Session, select
 
-from app.domain.errors import InvalidStudentError, InvalidWorksheetError, VisionClientError
+from app.domain.errors import InvalidAnswerKeyError, InvalidStudentError, InvalidWorksheetError, VisionClientError
 from app.domain.grading import grade_marks, resolve_answer_key
 from app.domain.mastery import evaluate_and_update_level, recalculate_skill_mastery
 from app.domain.submission_merge import merge_page_answers, resolve_page_range
@@ -44,6 +44,10 @@ MESSAGES = {
         "This worksheet could not be processed. Please try again. \u27f3 \n"
         "\u0939\u0940 \u0915\u093e\u0930\u094d\u092f\u092a\u0924\u094d\u0930\u093f\u0915\u093e \u0924\u092a\u093e\u0938\u0924\u093e \u0906\u0932\u0940 \u0928\u093e\u0939\u0940. \u0915\u0943\u092a\u092f\u093e \u092a\u0930\u0924 \u092a\u094d\u0930\u092f\u0924\u094d\u0928 \u0915\u0930\u093e. \u27f3"
     ),
+    "invalid_answer_key": (
+        "This worksheet is not ready to be graded yet. Please contact your facilitator. \u27f3 \n"
+        "\u0939\u0940 \u0915\u093e\u0930\u094d\u092f\u092a\u0924\u094d\u0930\u093f\u0915\u093e \u0924\u092a\u093e\u0938\u0923\u094d\u092f\u093e\u0938\u093e\u0920\u0940 \u0924\u092f\u093e\u0930 \u0928\u093e\u0939\u0940. \u0915\u0943\u092a\u092f\u093e \u0906\u092a\u0932\u094d\u092f\u093e \u0938\u0939\u0935\u093e\u092f\u0915\u093e\u0936\u0940 \u0938\u0902\u092a\u0930\u094d\u0915 \u0938\u093e\u0927\u093e. \u27f3"
+    ),
 }
 
 
@@ -62,17 +66,35 @@ def handle_incoming_image(
         comm_client.send_message(from_number, MESSAGES["vision_failed"])
         return
 
+    logger.info(
+        "vision-service result for correlation_id=%s: worksheet_id=%s page_no=%s "
+        "template_name=%s roll_number=%s roll_number_confidence=%s question_paper_code=%s "
+        "question_marks_count=%s",
+        correlation_id, result.worksheet_id, result.page_no, result.template_name,
+        result.roll_number, result.roll_number_confidence, result.question_paper_code,
+        len(result.question_marks),
+    )
+
     try:
         student = _validate_student(session, result.roll_number)
         worksheet = _validate_worksheet(session, result.worksheet_id)
+        answer_key = _validate_answer_key(session, worksheet.worksheet_id, result.question_paper_code)
     except InvalidStudentError:
         comm_client.send_message(from_number, MESSAGES["invalid_student"])
         return
     except InvalidWorksheetError:
         comm_client.send_message(from_number, MESSAGES["invalid_worksheet"])
         return
+    except InvalidAnswerKeyError:
+        logger.error(
+            "No resolvable answer key for correlation_id=%s: worksheet_id=%s question_paper_code=%r "
+            "(no question_paper_variant seeded for this code, and no canonical question_options "
+            "fallback either) -- refusing to grade rather than silently score 0.",
+            correlation_id, worksheet.worksheet_id, result.question_paper_code,
+        )
+        comm_client.send_message(from_number, MESSAGES["invalid_answer_key"])
+        return
 
-    answer_key = resolve_answer_key(session, worksheet.worksheet_id, result.question_paper_code)
     scanned_answers, _scanned_score = grade_marks(result.question_marks, answer_key)
     page_range = resolve_page_range(session, worksheet.worksheet_id, result.page_no)
 
@@ -117,6 +139,15 @@ def _validate_worksheet(session: Session, worksheet_id: int | None) -> Worksheet
     if worksheet is None:
         raise InvalidWorksheetError(f"No worksheet found for worksheet_id '{worksheet_id}'.")
     return worksheet
+
+
+def _validate_answer_key(session: Session, worksheet_id: int, question_paper_code: str | None) -> dict[int, str]:
+    answer_key = resolve_answer_key(session, worksheet_id, question_paper_code)
+    if not answer_key:
+        raise InvalidAnswerKeyError(
+            f"No resolvable answer key for worksheet_id={worksheet_id} question_paper_code={question_paper_code!r}."
+        )
+    return answer_key
 
 
 def _create_or_overwrite_submission(
