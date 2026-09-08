@@ -17,6 +17,7 @@ nginx.conf
 paperplus.service
 paperplus.sql
 sync-db.sh
+CLAUDE.md
 
 # Logs and temp files
 *.log
