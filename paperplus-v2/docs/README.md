@@ -42,6 +42,7 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 export DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5432/paperplus_v2
 alembic upgrade head   # once a Postgres instance is reachable
+python3 scripts/seed_skills.py  # required once before inserting any worksheet (questions.skill_code FK)
 uvicorn app.main:app --reload --port 8000
 
 # vision-service
@@ -49,6 +50,18 @@ cd vision-service
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8100
+```
+
+## Worksheet insertion / admin scripts
+
+Worksheet PDF/JSON *generation* is not ported to v2 — use the old repo's `worksheet_json_generator.py`/`batch_generate_worksheets.py` for that. Once JSON exists, insert it and manage students/answer-key variants with (from `api-service/`, venv activated):
+
+```bash
+python3 scripts/seed_skills.py                                             # once, before any worksheet insert
+python3 scripts/insert_single_worksheet.py --json-file 8001_en.json --type homework
+python3 scripts/bulk_insert_worksheets.py --json-dir ../../files/json      # or --dry-run first
+python3 scripts/import_students_from_csv.py students.csv --school-code PSV
+python3 scripts/insert_question_paper_variant.py --worksheet-id 9001 --code A --answer-key A,B,C,D,...
 ```
 
 ## Generating the first Alembic migration

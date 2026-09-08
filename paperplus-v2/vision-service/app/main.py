@@ -11,7 +11,7 @@ from fastapi import FastAPI, Header, HTTPException
 from app.core.config import settings
 from app.vision.bubble_inference import BubbleClassifier
 from app.vision.errors import CornerTagDetectionError, RollNumberError, RowTagDetectionError
-from app.vision.ocr import StubOCRProvider
+from app.vision.ocr import PaddleOCRProvider
 from app.vision.pipeline import process_scan
 from shared.contracts import ProcessingResult, ProcessRequest, QuestionMark
 
@@ -22,7 +22,7 @@ async def lifespan(app: FastAPI):
     # bubble_model_quantized.tflite is loaded but unused there (its call site is commented out).
     # Preloaded once here (not lazily per-request) to avoid cold-start latency.
     app.state.bubble_classifier = BubbleClassifier(settings.blur_model_path)
-    app.state.ocr_provider = StubOCRProvider()  # TODO(Phase 3 follow-up): swap for PaddleOCRProvider.
+    app.state.ocr_provider = PaddleOCRProvider()
     yield
 
 

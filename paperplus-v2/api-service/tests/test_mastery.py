@@ -85,12 +85,29 @@ def test_evaluate_and_update_level_advances_on_high_mastery(session: Session, st
         _add_attempt(session, student.student_id, skill.skill_code, True, question, submission)
     recalculate_skill_mastery(session, student.student_id, skill.skill_code)
 
+    # Advancing requires full coverage of every tier-"1" skill, not just the fixture's own
+    # "MT1" -- the real seeded catalog (scripts/seed_skills.py) also has tier-"1" skills, so
+    # give those high mastery too. These extra rows belong to this test only and are cleaned
+    # up below; the underlying Skill catalog rows are left untouched.
+    other_tier1_codes = session.exec(
+        select(Skill.skill_code).where(Skill.skill_level == "1", Skill.skill_code != skill.skill_code)
+    ).all()
+    for code in other_tier1_codes:
+        session.add(StudentSkillMastery(student_id=student.student_id, skill_code=code, mastery_score=1.0))
+    session.commit()
+
     result = evaluate_and_update_level(session, student.student_id)
 
     assert result["changed"] is True
     assert result["new_level"] == "B"
     session.refresh(student)
     assert student.current_level == "B"
+
+    for code in other_tier1_codes:
+        session.exec(
+            delete(StudentSkillMastery).where(StudentSkillMastery.student_id == student.student_id, StudentSkillMastery.skill_code == code)
+        )
+    session.commit()
 
 
 def test_evaluate_and_update_level_regresses_on_low_mastery(session: Session, student_with_skills):

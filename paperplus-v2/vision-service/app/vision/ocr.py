@@ -51,6 +51,9 @@ class PaddleOCRProvider:
             use_doc_orientation_classify=False,
             use_doc_unwarping=False,
             use_textline_orientation=False,
+            enable_mkldnn=False,  # paddle 3.3.1's oneDNN CPU backend raises
+            # NotImplementedError on this environment (ConvertPirAttribute2RuntimeAttribute
+            # not support pir::ArrayAttribute<pir::DoubleAttribute>); plain CPU inference works.
         )
 
     def recognize(self, image_array) -> str:
@@ -66,21 +69,25 @@ class PaddleOCRProvider:
 
 
 def _image_variants(image_array) -> list:
-    """Fallback variants tried in order: RGB, grayscale, adaptive-threshold binary, inverted binary."""
+    """Fallback variants tried in order: RGB, grayscale, adaptive-threshold binary, inverted binary.
+
+    All variants are kept 3-channel (even the visually-grayscale/binary ones) -- PaddleOCR's
+    preprocessing unconditionally does `h, w, _ = img.shape` and raises ValueError on a 2D array.
+    """
     if cv2 is None:
         return [image_array]
 
     variants = [cv2.cvtColor(image_array, cv2.COLOR_BGR2RGB)]
 
     gray = cv2.cvtColor(image_array, cv2.COLOR_BGR2GRAY)
-    variants.append(gray)
+    variants.append(cv2.cvtColor(gray, cv2.COLOR_GRAY2RGB))
 
     blurred = cv2.GaussianBlur(gray, (5, 5), 0)
     binary = cv2.adaptiveThreshold(
         blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 31, 10
     )
-    variants.append(binary)
-    variants.append(cv2.bitwise_not(binary))
+    variants.append(cv2.cvtColor(binary, cv2.COLOR_GRAY2RGB))
+    variants.append(cv2.cvtColor(cv2.bitwise_not(binary), cv2.COLOR_GRAY2RGB))
 
     return variants
 

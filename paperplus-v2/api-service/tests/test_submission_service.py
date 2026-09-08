@@ -55,7 +55,10 @@ def session():
 def worksheet_with_questions(session: Session):
     school = School(school_code="TST", school_name="Test School")
     student = Student(student_id="9999", student_name="Test Student", student_school_code="TST", current_level="A")
-    skill = Skill(skill_code="1A", skill_name="1-digit addition", skill_level="1")
+    # "1A" is also a real seeded skill (scripts/seed_skills.py) -- reuse it if present rather
+    # than inserting a duplicate PK, and don't delete it on teardown if we didn't create it.
+    skill_preexisted = session.get(Skill, "1A") is not None
+    skill = session.get(Skill, "1A") or Skill(skill_code="1A", skill_name="1-digit addition", skill_level="1")
     worksheet = Worksheet(worksheet_level="A", worksheet_category="practice", lang="en")
     session.add_all([school, student, skill, worksheet])
     session.commit()
@@ -88,7 +91,8 @@ def worksheet_with_questions(session: Session):
     session.exec(delete(Worksheet).where(Worksheet.worksheet_id == worksheet.worksheet_id))
     session.exec(delete(Student).where(Student.student_id == "9999"))
     session.exec(delete(School).where(School.school_code == "TST"))
-    session.exec(delete(Skill).where(Skill.skill_code == "1A"))
+    if not skill_preexisted:
+        session.exec(delete(Skill).where(Skill.skill_code == "1A"))
     session.commit()
 
 
@@ -167,7 +171,8 @@ def test_handle_incoming_image_reports_unrecognized_student(session: Session, wo
 def two_page_worksheet(session: Session):
     """A 2-page worksheet: page 1 = questions 1-2, page 2 = questions 3-4."""
     student = Student(student_id="9998", student_name="Two Page Test", current_level="A")
-    skill = Skill(skill_code="1A", skill_name="1-digit addition", skill_level="1")
+    skill_preexisted = session.get(Skill, "1A") is not None
+    skill = session.get(Skill, "1A") or Skill(skill_code="1A", skill_name="1-digit addition", skill_level="1")
     worksheet = Worksheet(worksheet_level="A", worksheet_category="omr", lang="en", page_count=2)
     session.add_all([student, skill, worksheet])
     session.commit()
@@ -201,7 +206,8 @@ def two_page_worksheet(session: Session):
     session.exec(delete(Question).where(Question.worksheet_id == worksheet.worksheet_id))
     session.exec(delete(Worksheet).where(Worksheet.worksheet_id == worksheet.worksheet_id))
     session.exec(delete(Student).where(Student.student_id == "9998"))
-    session.exec(delete(Skill).where(Skill.skill_code == "1A"))
+    if not skill_preexisted:
+        session.exec(delete(Skill).where(Skill.skill_code == "1A"))
     session.commit()
 
 
