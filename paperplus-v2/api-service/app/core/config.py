@@ -13,6 +13,10 @@ class Settings(BaseSettings):
     vision_service_shared_secret: str = "change-me"
 
     storage_root: str = "./files"
+    # Base URL this service is publicly reachable at, used to build served URLs (checked-image
+    # link sent over WhatsApp via Exotel, and the fileURL/checkedURL fields logged to Sheets) --
+    # both require an internet-fetchable URL, not a local filesystem path.
+    public_base_url: str = "http://localhost:8000"
 
     local_mode: bool = False  # when true, outgoing WhatsApp sends are logged instead of dispatched
     whatsapp_from: str = "+912071173227"

@@ -71,7 +71,15 @@ def process(request: ProcessRequest, x_service_secret: str | None = Header(defau
         roll_number_confidence=result.roll_number_confidence,
         question_paper_code=result.question_paper_code,
         question_marks=[
-            QuestionMark(question_index=m.question_index, marked_option=m.marked_option, confidence=m.confidence)
+            QuestionMark(
+                question_index=m.question_index,
+                marked_option=m.marked_option,
+                confidence=m.confidence,
+                roi_x1=m.roi_x1,
+                roi_y1=m.roi_y1,
+                roi_x2=m.roi_x2,
+                roi_y2=m.roi_y2,
+            )
             for m in result.question_marks
         ],
         dewarped_image_path=dewarped_path,

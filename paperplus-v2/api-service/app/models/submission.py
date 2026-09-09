@@ -46,6 +46,8 @@ class Submission(SQLModel, table=True):
     processing_started_at: datetime | None = None
     processing_completed_at: datetime | None = None
     submitted_at: datetime = Field(default_factory=utcnow)
+    checked_image_path: str | None = None
+    checked_image_url: str | None = None
 
 
 class Attempt(SQLModel, table=True):

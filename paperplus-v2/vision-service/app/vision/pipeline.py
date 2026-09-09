@@ -20,6 +20,10 @@ class QuestionMark:
     question_index: int
     marked_option: str | None
     confidence: float
+    roi_x1: int
+    roi_y1: int
+    roi_x2: int
+    roi_y2: int
 
 
 @dataclass
@@ -75,6 +79,10 @@ def process_scan(
                 question_index=first_question_index + offset,
                 marked_option=marked_option,
                 confidence=confidence,
+                roi_x1=roi.x1,
+                roi_y1=roi.y1,
+                roi_x2=roi.x2,
+                roi_y2=roi.y2,
             )
         )
 

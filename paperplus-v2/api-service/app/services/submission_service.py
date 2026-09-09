@@ -10,9 +10,12 @@ the first state recorded, immediately followed by the rest.
 """
 
 import logging
+from pathlib import Path
 
 from sqlmodel import Session, select
 
+from app.core.config import settings
+from app.domain.annotation import draw_checked_image
 from app.domain.errors import InvalidAnswerKeyError, InvalidStudentError, InvalidWorksheetError, VisionClientError
 from app.domain.grading import grade_marks, resolve_answer_key
 from app.domain.mastery import evaluate_and_update_level, recalculate_skill_mastery
@@ -24,9 +27,11 @@ from app.domain.submission_state import (
     transition_to_registering,
     transition_to_scoring,
 )
-from app.models import Attempt, Question, Student, Submission, Worksheet
-from app.models.submission import ProcessingState
+from app.models import Attempt, Question, ScanReview, Student, Submission, Worksheet
+from app.models.submission import ProcessingState, ScanReviewStatus
+from app.routes.files import checked_image_url
 from app.services.communication import CommunicationClient
+from app.services.sheets_logging import log_to_sheet_async
 from app.services.vision_client import VisionClient
 
 logger = logging.getLogger(__name__)
@@ -61,8 +66,11 @@ def handle_incoming_image(
 ) -> None:
     try:
         result = vision_client.process(image_path, correlation_id)
-    except VisionClientError:
+    except VisionClientError as exc:
         logger.exception("vision-service call failed for correlation_id=%s", correlation_id)
+        _record_scan_review(
+            session, status=ScanReviewStatus.FAILED, error_reason=f"vision-service call failed: {exc}"
+        )
         comm_client.send_message(from_number, MESSAGES["vision_failed"])
         return
 
@@ -79,23 +87,39 @@ def handle_incoming_image(
         student = _validate_student(session, result.roll_number)
         worksheet = _validate_worksheet(session, result.worksheet_id)
         answer_key = _validate_answer_key(session, worksheet.worksheet_id, result.question_paper_code)
-    except InvalidStudentError:
+    except InvalidStudentError as exc:
+        _record_scan_review(
+            session, status=ScanReviewStatus.FAILED, error_reason=str(exc), detected_roll_number=result.roll_number,
+        )
         comm_client.send_message(from_number, MESSAGES["invalid_student"])
         return
-    except InvalidWorksheetError:
+    except InvalidWorksheetError as exc:
+        # worksheet_id itself doesn't reference a real row (that's the failure), so it can't be
+        # set as the FK -- captured in error_reason as text instead. `student` is bound here since
+        # _validate_student already succeeded on the line above.
+        _record_scan_review(
+            session, status=ScanReviewStatus.FAILED, error_reason=str(exc),
+            student_id=student.student_id, detected_roll_number=result.roll_number,
+        )
         comm_client.send_message(from_number, MESSAGES["invalid_worksheet"])
         return
-    except InvalidAnswerKeyError:
+    except InvalidAnswerKeyError as exc:
         logger.error(
             "No resolvable answer key for correlation_id=%s: worksheet_id=%s question_paper_code=%r "
             "(no question_paper_variant seeded for this code, and no canonical question_options "
             "fallback either) -- refusing to grade rather than silently score 0.",
             correlation_id, worksheet.worksheet_id, result.question_paper_code,
         )
+        # NEEDS_REVIEW rather than FAILED: this is a content-seeding gap (missing answer key),
+        # not a bad/unreadable scan -- surfaces separately on a dashboard "failed scans" view.
+        _record_scan_review(
+            session, status=ScanReviewStatus.NEEDS_REVIEW, error_reason=str(exc),
+            student_id=student.student_id, worksheet_id=worksheet.worksheet_id, detected_roll_number=result.roll_number,
+        )
         comm_client.send_message(from_number, MESSAGES["invalid_answer_key"])
         return
 
-    scanned_answers, _scanned_score = grade_marks(result.question_marks, answer_key)
+    scanned_answers, page_score = grade_marks(result.question_marks, answer_key)
     page_range = resolve_page_range(session, worksheet.worksheet_id, result.page_no)
 
     submission, answers_payload, score = _create_or_overwrite_submission(
@@ -121,6 +145,81 @@ def handle_incoming_image(
     )
 
     comm_client.send_message(from_number, f"Your marks: {score}/{len(answers_payload)}")
+
+    _annotate_and_send_checked_image(
+        session, comm_client, submission, result, scanned_answers, page_score, from_number, correlation_id,
+    )
+
+
+def _record_scan_review(
+    session: Session,
+    *,
+    status: ScanReviewStatus,
+    error_reason: str,
+    student_id: str | None = None,
+    worksheet_id: int | None = None,
+    detected_roll_number: str | None = None,
+) -> None:
+    """Persists a failed/needs-review scan that never reached a Submission row (schema requires
+    submission_id on ProcessingEvent, but ScanReview.submission_id is nullable for exactly this
+    case) -- so failed scans show up on a "failed scans" dashboard view instead of only in logs.
+    """
+    session.add(
+        ScanReview(
+            student_id=student_id,
+            worksheet_id=worksheet_id,
+            detected_roll_number=detected_roll_number,
+            status=status.value,
+            error_reason=error_reason,
+        )
+    )
+    session.commit()
+
+
+def _annotate_and_send_checked_image(
+    session: Session,
+    comm_client: CommunicationClient,
+    submission: Submission,
+    result,
+    scanned_answers: list[dict],
+    page_score: int,
+    from_number: str,
+    correlation_id: str,
+) -> None:
+    """Draws the correct/incorrect annotation for THIS scanned page (not the merged multi-page
+    total -- the image only has this page's pixels) and sends it back over WhatsApp, mirroring
+    the old system's per-scan checked-image send. Best-effort: any failure here is logged but
+    must not fail the grading that already succeeded and was already messaged to the student.
+    """
+    if not result.dewarped_image_path:
+        logger.warning(
+            "No dewarped_image_path returned by vision-service for correlation_id=%s -- skipping "
+            "checked-image annotation.", correlation_id,
+        )
+        return
+
+    output_filename = f"{correlation_id}_checked.jpg"
+    output_path = Path(settings.storage_root) / "checked" / output_filename
+
+    try:
+        draw_checked_image(
+            result.dewarped_image_path, result.question_marks, scanned_answers,
+            page_score, len(scanned_answers), str(output_path),
+        )
+    except Exception:
+        logger.exception("Failed to draw checked image for correlation_id=%s", correlation_id)
+        return
+
+    url = checked_image_url(output_filename)
+    submission.checked_image_path = str(output_path)
+    submission.checked_image_url = url
+    session.add(submission)
+    session.commit()
+
+    comm_client.send_image(from_number, url, "")
+    log_to_sheet_async(
+        from_number, url, scanned_answers, page_score, result.roll_number, result.worksheet_id,
+    )
 
 
 def _validate_student(session: Session, roll_number: str | None) -> Student:

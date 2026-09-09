@@ -17,6 +17,14 @@ class QuestionMark(BaseModel):
     question_index: int
     marked_option: str | None
     confidence: float
+    # Pixel ROI box of this question on the dewarped image (see dewarped_image_path below),
+    # so api-service can draw the checked-image (correct/incorrect) annotation after grading
+    # without re-deriving AprilTag/template geometry itself. Default 0 keeps this optional for
+    # fixtures/tests that only exercise grading and don't care about pixel geometry.
+    roi_x1: int = 0
+    roi_y1: int = 0
+    roi_x2: int = 0
+    roi_y2: int = 0
 
 
 class ProcessingResult(BaseModel):

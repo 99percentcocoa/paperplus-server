@@ -3,5 +3,6 @@ __pycache__/
 *.pyc
 .env
 files/
+shared_dev_files/
 *.egg-info/
 .pytest_cache/
