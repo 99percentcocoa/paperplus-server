@@ -1,0 +1,30 @@
+# Read from the build context root (paperplus-v2/) since infra/docker-compose.yml sets
+# `context: ..` for both services (needed so their Dockerfiles can COPY the sibling shared/
+# package) -- api-service/.dockerignore and vision-service/.dockerignore are no longer read at
+# all now that the context isn't scoped to those directories individually.
+
+**/.venv/
+**/__pycache__/
+**/*.pyc
+**/.pytest_cache/
+**/*.egg-info/
+
+**/.env
+**/.env.*
+!**/.env.example
+
+.git
+.gitignore
+.dockerignore
+.github
+.vscode
+.idea
+
+**/*.log
+**/.DS_Store
+**/Thumbs.db
+
+# Local dev-only artifact dirs (see paperplus-v2/.gitignore) -- large, host-specific, never
+# needed inside an image.
+**/files/
+shared_dev_files/

@@ -11,7 +11,12 @@ services:
       - "5432:5432"
 
   api-service:
-    build: ../api-service
+    build:
+      # Context is the paperplus-v2/ monorepo root, not api-service/ itself, so the Dockerfile
+      # can COPY the sibling shared/ package (api-service/app imports it as `shared.contracts`
+      # and `shared.logging_config`) -- it's physically outside a context scoped to api-service/.
+      context: ..
+      dockerfile: api-service/Dockerfile
     env_file: .env
     environment:
       DATABASE_URL: postgresql+psycopg://paperplus:paperplus@postgres:5432/paperplus_v2
@@ -25,7 +30,9 @@ services:
       - "8000:8000"
 
   vision-service:
-    build: ../vision-service
+    build:
+      context: ..
+      dockerfile: vision-service/Dockerfile
     env_file: .env
     volumes:
       - files_data:/app/files
