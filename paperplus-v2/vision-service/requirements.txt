@@ -6,7 +6,7 @@ numpy>=2.0,<3.0
 opencv-python-headless>=4.10,<5.0
 pupil-apriltags>=1.0,<2.0
 ai-edge-litert>=1.0,<2.0
-# TODO(Phase 3 follow-up): install and enable `paddleocr` (heavy, deferred — see app/vision/ocr.py PaddleOCRProvider)
+paddleocr==3.7.0
 
 pytest>=8.0,<9.0
 httpx>=0.27,<1.0
