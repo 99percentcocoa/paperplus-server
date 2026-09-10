@@ -14,21 +14,32 @@ from sqlmodel import Session
 
 from app.core.config import settings
 from app.db.session import get_session
-from app.services.communication import ExotelCommunicationClient, is_valid_image_message
+from app.services.communication import CommunicationClient, ExotelCommunicationClient, is_valid_image_message
 from app.services.submission_service import handle_incoming_image
-from app.services.vision_client import HTTPVisionClient
+from app.services.vision_client import HTTPVisionClient, VisionClient
+from shared.logging_config import correlation_id_var
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 
-@router.post("/webhook")
-def webhook(payload: dict, session: Session = Depends(get_session)) -> dict:
-    messages = ((payload.get("whatsapp") or {}).get("messages")) or []
+def get_vision_client() -> VisionClient:
+    return HTTPVisionClient()
 
-    vision_client = HTTPVisionClient()
-    comm_client = ExotelCommunicationClient()
+
+def get_comm_client() -> CommunicationClient:
+    return ExotelCommunicationClient()
+
+
+@router.post("/webhook")
+def webhook(
+    payload: dict,
+    session: Session = Depends(get_session),
+    vision_client: VisionClient = Depends(get_vision_client),
+    comm_client: CommunicationClient = Depends(get_comm_client),
+) -> dict:
+    messages = ((payload.get("whatsapp") or {}).get("messages")) or []
 
     for message in messages:
         from_number = message.get("from")
@@ -37,13 +48,23 @@ def webhook(payload: dict, session: Session = Depends(get_session)) -> dict:
             continue
 
         correlation_id = str(uuid.uuid4())
+        correlation_id_var.set(correlation_id)
+        logger.info("Received image message from=%s image_url=%s", from_number, image_url)
+
         try:
             image_path = _download_image(image_url, correlation_id)
         except httpx.HTTPError:
-            logger.exception("Failed to download image for correlation_id=%s", correlation_id)
+            logger.exception("Failed to download image")
             continue
 
-        handle_incoming_image(session, vision_client, comm_client, from_number, image_path, correlation_id)
+        try:
+            handle_incoming_image(session, vision_client, comm_client, from_number, image_path, correlation_id)
+        except Exception:
+            # Grading is one message in a batch -- an unexpected failure here must not stop the
+            # rest of the batch from being processed, and must be visible rather than silently
+            # 500-ing the whole webhook call (Submission.state has no path back from mid-pipeline
+            # crashes today; this at least makes the failure loud and lets the batch continue).
+            logger.exception("Unhandled error while processing incoming image")
 
     return {"status": "ok"}
 

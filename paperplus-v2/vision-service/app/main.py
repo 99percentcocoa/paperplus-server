@@ -5,6 +5,8 @@ vision-service: stateless image processing (AprilTag/dewarp, OCR, bubble inferen
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+import logging
+
 import cv2
 from fastapi import FastAPI, Header, HTTPException
 
@@ -14,6 +16,10 @@ from app.vision.errors import CornerTagDetectionError, RollNumberError, RowTagDe
 from app.vision.ocr import PaddleOCRProvider
 from app.vision.pipeline import process_scan
 from shared.contracts import ProcessingResult, ProcessRequest, QuestionMark
+from shared.logging_config import configure_logging, correlation_id_var
+
+configure_logging("vision-service")
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -41,10 +47,14 @@ def health() -> dict:
 
 @app.post("/process", response_model=ProcessingResult)
 def process(request: ProcessRequest, x_service_secret: str | None = Header(default=None)) -> ProcessingResult:
+    correlation_id_var.set(request.correlation_id)
     _require_shared_secret(x_service_secret)
+
+    logger.info("Processing scan for image_path=%s template_hint=%s", request.image_path, request.template_hint)
 
     image_array = cv2.imread(request.image_path)
     if image_array is None:
+        logger.error("Could not read image at %s", request.image_path)
         raise HTTPException(status_code=400, detail=f"could not read image at {request.image_path}")
 
     try:
@@ -57,7 +67,15 @@ def process(request: ProcessRequest, x_service_secret: str | None = Header(defau
             template_hint=request.template_hint,
         )
     except (CornerTagDetectionError, RowTagDetectionError, RollNumberError) as exc:
+        logger.warning("Scan processing failed: %s", exc)
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    logger.info(
+        "Scan processed: worksheet_id=%s page_no=%s template_name=%s roll_number=%s "
+        "question_paper_code=%s question_marks_count=%s",
+        result.worksheet_id, result.page_no, result.template_name, result.roll_number,
+        result.question_paper_code, len(result.question_marks),
+    )
 
     dewarped_path = _save_artifact(result.dewarped_image_array, request.correlation_id, "dewarped")
     debug_path = _save_artifact(result.debug_image_array, request.correlation_id, "debug")

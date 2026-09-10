@@ -20,37 +20,12 @@ from app.models import (
     Submission,
     Worksheet,
 )
-from app.domain.errors import VisionClientError
 from app.models.mastery import MasteryHistory
 from app.models.submission import ProcessingState
 from app.models.worksheet import WorksheetPage
 from app.services.submission_service import handle_incoming_image
 from shared.contracts import ProcessingResult, QuestionMark
-
-
-class FakeVisionClient:
-    def __init__(self, result: ProcessingResult):
-        self._result = result
-
-    def process(self, image_path, correlation_id, template_hint=None):
-        return self._result
-
-
-class FailingFakeVisionClient:
-    def process(self, image_path, correlation_id, template_hint=None):
-        raise VisionClientError("connection refused")
-
-
-class FakeCommunicationClient:
-    def __init__(self):
-        self.sent_messages = []
-        self.sent_images = []
-
-    def send_message(self, to_number, message):
-        self.sent_messages.append((to_number, message))
-
-    def send_image(self, to_number, image_url, caption=""):
-        self.sent_images.append((to_number, image_url, caption))
+from tests.fakes import FailingFakeVisionClient, FakeCommunicationClient, FakeVisionClient
 
 
 @pytest.fixture
@@ -221,6 +196,12 @@ def test_handle_incoming_image_reports_unrecognized_student(session: Session, wo
     assert len(comm_client.sent_messages) == 1
     assert "Roll number not recognized" in comm_client.sent_messages[0][1]
     assert select_submission_ids(session, worksheet.worksheet_id) == []
+
+    # InvalidStudentError also writes a ScanReview (student_id/worksheet_id both None here,
+    # since the roll number never resolved to a real student) -- clean it up rather than
+    # leaking an orphan row into the shared dev DB on every test run.
+    session.exec(delete(ScanReview).where(ScanReview.detected_roll_number == "0000"))
+    session.commit()
 
 
 def test_handle_incoming_image_refuses_to_grade_with_no_answer_key(session: Session, worksheet_with_questions):

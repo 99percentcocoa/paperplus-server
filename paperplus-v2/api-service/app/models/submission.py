@@ -78,6 +78,7 @@ class ScanReview(SQLModel, table=True):
     student_id: str | None = None
     worksheet_id: int | None = Field(default=None, foreign_key="worksheets.worksheet_id", index=True)
     detected_roll_number: str | None = None
+    correlation_id: str | None = Field(default=None, index=True)
     status: str = Field(default=ScanReviewStatus.FAILED.value)
     error_reason: str | None = None
     original_answers: dict | None = Field(default=None, sa_column=Column(JSONB))

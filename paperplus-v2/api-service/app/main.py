@@ -1,6 +1,10 @@
 from fastapi import FastAPI
 
-from app.routes import dashboard, files, webhook
+from shared.logging_config import configure_logging
+
+configure_logging("api-service")
+
+from app.routes import dashboard, files, webhook  # noqa: E402 - must follow configure_logging()
 
 app = FastAPI(title="paperplus-api-service")
 

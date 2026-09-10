@@ -33,6 +33,7 @@ from app.routes.files import checked_image_url
 from app.services.communication import CommunicationClient
 from app.services.sheets_logging import log_to_sheet_async
 from app.services.vision_client import VisionClient
+from shared.logging_config import correlation_id_var
 
 logger = logging.getLogger(__name__)
 
@@ -64,10 +65,16 @@ def handle_incoming_image(
     image_path: str,
     correlation_id: str,
 ) -> None:
+    # Set (not just read) here, not only in webhook.py, so this contextvar is always correct
+    # regardless of caller (scripts/test_local_image.py and tests call this directly, bypassing
+    # webhook.py's own correlation_id_var.set()) -- every log call below this point, and the
+    # ScanReview rows written on failure, then automatically carry the right correlation_id.
+    correlation_id_var.set(correlation_id)
+
     try:
         result = vision_client.process(image_path, correlation_id)
     except VisionClientError as exc:
-        logger.exception("vision-service call failed for correlation_id=%s", correlation_id)
+        logger.exception("vision-service call failed")
         _record_scan_review(
             session, status=ScanReviewStatus.FAILED, error_reason=f"vision-service call failed: {exc}"
         )
@@ -75,10 +82,9 @@ def handle_incoming_image(
         return
 
     logger.info(
-        "vision-service result for correlation_id=%s: worksheet_id=%s page_no=%s "
-        "template_name=%s roll_number=%s roll_number_confidence=%s question_paper_code=%s "
-        "question_marks_count=%s",
-        correlation_id, result.worksheet_id, result.page_no, result.template_name,
+        "vision-service result: worksheet_id=%s page_no=%s template_name=%s roll_number=%s "
+        "roll_number_confidence=%s question_paper_code=%s question_marks_count=%s",
+        result.worksheet_id, result.page_no, result.template_name,
         result.roll_number, result.roll_number_confidence, result.question_paper_code,
         len(result.question_marks),
     )
@@ -105,10 +111,10 @@ def handle_incoming_image(
         return
     except InvalidAnswerKeyError as exc:
         logger.error(
-            "No resolvable answer key for correlation_id=%s: worksheet_id=%s question_paper_code=%r "
-            "(no question_paper_variant seeded for this code, and no canonical question_options "
-            "fallback either) -- refusing to grade rather than silently score 0.",
-            correlation_id, worksheet.worksheet_id, result.question_paper_code,
+            "No resolvable answer key: worksheet_id=%s question_paper_code=%r (no question_paper_variant "
+            "seeded for this code, and no canonical question_options fallback either) -- refusing to "
+            "grade rather than silently score 0.",
+            worksheet.worksheet_id, result.question_paper_code,
         )
         # NEEDS_REVIEW rather than FAILED: this is a content-seeding gap (missing answer key),
         # not a bad/unreadable scan -- surfaces separately on a dashboard "failed scans" view.
@@ -163,12 +169,16 @@ def _record_scan_review(
     """Persists a failed/needs-review scan that never reached a Submission row (schema requires
     submission_id on ProcessingEvent, but ScanReview.submission_id is nullable for exactly this
     case) -- so failed scans show up on a "failed scans" dashboard view instead of only in logs.
+    correlation_id is read from the contextvar (set once per request in webhook.py) rather than
+    threaded through as a parameter, so this row can be cross-referenced with the structured
+    log lines that explain what happened in more detail than error_reason alone captures.
     """
     session.add(
         ScanReview(
             student_id=student_id,
             worksheet_id=worksheet_id,
             detected_roll_number=detected_roll_number,
+            correlation_id=correlation_id_var.get(),
             status=status.value,
             error_reason=error_reason,
         )
