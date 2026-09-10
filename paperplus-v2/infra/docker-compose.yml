@@ -47,7 +47,12 @@ services:
     depends_on:
       - api-service
     ports:
-      - "80:80"
+      # Overridable via NGINX_HOST_PORT in .env -- defaults to 8080 rather than 80 because dev
+      # machines often already have something bound to host port 80 (this was validated on a
+      # box with a stray system Apache on 80, unrelated to this project, silently "winning" the
+      # bind ahead of Docker). On a dedicated deploy VM with port 80 genuinely free, set
+      # NGINX_HOST_PORT=80 in infra/.env.
+      - "${NGINX_HOST_PORT:-8080}:80"
 
 volumes:
   postgres_data:
