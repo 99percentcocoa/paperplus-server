@@ -53,6 +53,13 @@ def main() -> None:
     parser.add_argument("--force", action="store_true", help="Attempt insert even when a worksheet_id already exists.")
     parser.add_argument("--lang", metavar="LANG", help="Only process files for this language code (en/mr).")
     parser.add_argument("--json-dir", default=None, help="Directory to scan for generated worksheet JSON files (default: <storage_root>/json).")
+    parser.add_argument(
+        "--template",
+        dest="template_name",
+        default=None,
+        help="Template name applied to every file in this run (e.g. regular, basic_omr). If "
+        "omitted, inferred per-file from its category: basic_omr for omr, regular otherwise.",
+    )
     args = parser.parse_args()
 
     json_dir = Path(args.json_dir) if args.json_dir else Path(settings.storage_root) / "json"
@@ -93,6 +100,7 @@ def main() -> None:
                     worksheet_json,
                     worksheet_id=int(worksheet_id) if worksheet_id is not None else None,
                     worksheet_category=category,
+                    template_name=args.template_name,
                 )
                 print(
                     f"[OK]       {filename}  ->  worksheet_id={result['worksheet_id']}  "

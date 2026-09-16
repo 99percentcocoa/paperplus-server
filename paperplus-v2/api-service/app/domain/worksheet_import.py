@@ -10,6 +10,7 @@ the new DB: `worksheets`/`questions`/`question_options` rather than the old
 """
 
 import json
+import math
 import re
 from pathlib import Path
 from string import ascii_uppercase
@@ -18,7 +19,8 @@ from sqlmodel import Session, select
 
 from app.domain.errors import InvalidSubmissionDataError
 from app.models import Question, QuestionOption, School, Skill, Student, Worksheet
-from app.models.worksheet import QuestionPaperVariant, WorksheetCategory
+from app.models.worksheet import QuestionPaperVariant, WorksheetCategory, WorksheetPage, WorksheetTemplate
+from shared.worksheet_templates import QUESTIONS_PER_PAGE
 
 DEFAULT_SKILLS_PATH = Path(__file__).resolve().parent.parent / "data" / "skills.json"
 
@@ -118,15 +120,41 @@ def _ensure_placeholder_skill(session: Session, skill_code: str) -> None:
     session.add(Skill(skill_code=skill_code, skill_name=f"Placeholder for {skill_code}", skill_level="1"))
 
 
+def _ensure_worksheet_template(session: Session, template_name: str) -> WorksheetTemplate:
+    """Get-or-create the WorksheetTemplate row for template_name, mirroring
+    _ensure_placeholder_skill's pattern. The template's actual geometry/ROI definition stays
+    code-only in vision-service's TEMPLATE_LAYOUTS -- this row is just a DB-side reference/audit
+    stub, per WorksheetTemplate's own docstring.
+    """
+    existing = session.exec(select(WorksheetTemplate).where(WorksheetTemplate.name == template_name)).first()
+    if existing is not None:
+        return existing
+    template = WorksheetTemplate(name=template_name)
+    session.add(template)
+    session.flush()
+    return template
+
+
+def _default_template_name(category: str) -> str:
+    return "basic_omr" if category == WorksheetCategory.OMR.value else "regular"
+
+
 def insert_worksheet(
     session: Session,
     worksheet_json: dict | list,
     worksheet_id: int | None = None,
     worksheet_category: str | None = None,
+    template_name: str | None = None,
 ) -> dict:
     """Insert a worksheet and its questions/options. Returns {worksheet_id, question_ids}.
 
-    Raises InvalidSubmissionDataError if worksheet_json has no questions.
+    Raises InvalidSubmissionDataError if worksheet_json has no questions. Raises ValueError if
+    template_name isn't registered in shared.worksheet_templates.QUESTIONS_PER_PAGE.
+
+    Also sets worksheet.template_id (resolving/creating the matching WorksheetTemplate row) and,
+    for worksheets spanning more than one page for their template, worksheet.page_count and one
+    WorksheetPage row per page -- both previously left at defaults/empty by every insertion path,
+    which silently disabled submission_merge.py's page-aware rescan-gap-filling behavior.
     """
     questions = worksheet_json if isinstance(worksheet_json, list) else worksheet_json.get("questions", [])
     if not questions:
@@ -137,14 +165,28 @@ def insert_worksheet(
     if category not in {c.value for c in WorksheetCategory}:
         raise ValueError(f"worksheet_category must be one of {[c.value for c in WorksheetCategory]}, got {category!r}")
 
+    resolved_template_name = template_name or _default_template_name(category)
+    questions_per_page = QUESTIONS_PER_PAGE.get(resolved_template_name)
+    if questions_per_page is None:
+        raise ValueError(
+            f"Unregistered template_name {resolved_template_name!r}; add it to "
+            "shared/worksheet_templates.py's QUESTIONS_PER_PAGE before inserting worksheets that use it."
+        )
+    template = _ensure_worksheet_template(session, resolved_template_name)
+
+    total_question_count = len(questions)
+    page_count = max(1, math.ceil(total_question_count / questions_per_page))
+
     worksheet = Worksheet(
         worksheet_id=worksheet_id,
         worksheet_level=payload.get("level"),
         lang=payload.get("language"),
         title=payload.get("title"),
         worksheet_category=category,
-        max_score=len(questions),
-        total_question_count=len(questions),
+        max_score=total_question_count,
+        total_question_count=total_question_count,
+        page_count=page_count,
+        template_id=template.id,
         worksheet_json=payload,
     )
     session.add(worksheet)
@@ -156,6 +198,19 @@ def insert_worksheet(
             "SELECT setval(pg_get_serial_sequence('worksheets', 'worksheet_id'), "
             "(SELECT MAX(worksheet_id) FROM worksheets))"
         )
+
+    if page_count > 1:
+        for page_no in range(1, page_count + 1):
+            first_question_index = 1 + (page_no - 1) * questions_per_page
+            last_question_index = min(page_no * questions_per_page, total_question_count)
+            session.add(
+                WorksheetPage(
+                    worksheet_id=worksheet.worksheet_id,
+                    page_no=page_no,
+                    first_question_index=first_question_index,
+                    last_question_index=last_question_index,
+                )
+            )
 
     question_ids = []
     for position, q in enumerate(questions, start=1):

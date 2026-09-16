@@ -15,7 +15,7 @@ from app.domain.worksheet_import import (
     worksheet_exists,
 )
 from app.models import Question, QuestionOption, School, Skill, Student, Worksheet
-from app.models.worksheet import QuestionPaperVariant
+from app.models.worksheet import QuestionPaperVariant, WorksheetPage, WorksheetTemplate
 
 
 @pytest.fixture
@@ -26,6 +26,7 @@ def session():
 
 def _cleanup_worksheet(session: Session, worksheet_id: int) -> None:
     session.exec(delete(QuestionPaperVariant).where(QuestionPaperVariant.worksheet_id == worksheet_id))
+    session.exec(delete(WorksheetPage).where(WorksheetPage.worksheet_id == worksheet_id))
     for question in session.exec(select(Question).where(Question.worksheet_id == worksheet_id)).all():
         session.exec(delete(QuestionOption).where(QuestionOption.question_id == question.question_id))
     session.exec(delete(Question).where(Question.worksheet_id == worksheet_id))
@@ -134,6 +135,92 @@ def test_insert_worksheet_infers_category_when_omitted(session: Session):
         assert worksheet.worksheet_category == "practice"
     finally:
         _cleanup_worksheet(session, worksheet_id)
+        session.exec(delete(Skill).where(Skill.skill_code == "WI1"))
+        session.commit()
+
+
+def _omr_question(index: int) -> dict:
+    return {
+        "index": index,
+        "question_text": f"Q{index}",
+        "skill_code": "omr",
+        "options": ["1", "2", "3", "4"],
+        "correct_option": "A",
+    }
+
+
+def test_insert_worksheet_multi_page_basic_omr_creates_worksheet_pages(session: Session):
+    """A basic_omr worksheet with 78 questions (2 pages of 39) must get page_count=2 and two
+    WorksheetPage rows -- this is the exact gap that let submission_merge.py's page-aware
+    rescan behavior silently never trigger for any real worksheet.
+    """
+    payload = {
+        "title": "78-question OMR",
+        "language": "en",
+        "worksheet_category": "omr",
+        "questions": [_omr_question(i) for i in range(1, 79)],
+    }
+    result = insert_worksheet(session, payload, worksheet_category="omr")
+    worksheet_id = result["worksheet_id"]
+    try:
+        worksheet = session.get(Worksheet, worksheet_id)
+        assert worksheet.page_count == 2
+        assert worksheet.template_id is not None
+        template = session.get(WorksheetTemplate, worksheet.template_id)
+        assert template.name == "basic_omr"
+
+        pages = session.exec(
+            select(WorksheetPage).where(WorksheetPage.worksheet_id == worksheet_id).order_by(WorksheetPage.page_no)
+        ).all()
+        assert [(p.page_no, p.first_question_index, p.last_question_index) for p in pages] == [
+            (1, 1, 39),
+            (2, 40, 78),
+        ]
+    finally:
+        _cleanup_worksheet(session, worksheet_id)
+
+
+def test_insert_worksheet_single_page_no_worksheet_pages(session: Session):
+    """Regression guard: a single-page worksheet (well under its template's questions-per-page)
+    must not get any WorksheetPage rows -- resolve_page_range() returning None for it is the
+    intended single-page behavior, not a gap.
+    """
+    result = insert_worksheet(session, WORKSHEET_JSON, worksheet_category="homework")
+    worksheet_id = result["worksheet_id"]
+    try:
+        worksheet = session.get(Worksheet, worksheet_id)
+        assert worksheet.page_count == 1
+        pages = session.exec(select(WorksheetPage).where(WorksheetPage.worksheet_id == worksheet_id)).all()
+        assert pages == []
+    finally:
+        _cleanup_worksheet(session, worksheet_id)
+        session.exec(delete(Skill).where(Skill.skill_code == "WI1"))
+        session.commit()
+
+
+def test_insert_worksheet_unregistered_template_raises(session: Session):
+    with pytest.raises(ValueError, match="Unregistered template_name"):
+        insert_worksheet(session, WORKSHEET_JSON, worksheet_category="homework", template_name="not_a_real_template")
+
+
+def test_insert_worksheet_reuses_worksheet_template_row(session: Session):
+    """Two worksheets using the same template must share one WorksheetTemplate row, not create
+    a duplicate -- WorksheetTemplate.name is unique.
+    """
+    result1 = insert_worksheet(session, WORKSHEET_JSON, worksheet_category="homework")
+    worksheet_id1 = result1["worksheet_id"]
+    payload2 = {**WORKSHEET_JSON, "title": "Second worksheet"}
+    result2 = insert_worksheet(session, payload2, worksheet_category="homework")
+    worksheet_id2 = result2["worksheet_id"]
+    try:
+        w1 = session.get(Worksheet, worksheet_id1)
+        w2 = session.get(Worksheet, worksheet_id2)
+        assert w1.template_id == w2.template_id
+        matching = session.exec(select(WorksheetTemplate).where(WorksheetTemplate.name == "regular")).all()
+        assert len(matching) == 1
+    finally:
+        _cleanup_worksheet(session, worksheet_id1)
+        _cleanup_worksheet(session, worksheet_id2)
         session.exec(delete(Skill).where(Skill.skill_code == "WI1"))
         session.commit()
 

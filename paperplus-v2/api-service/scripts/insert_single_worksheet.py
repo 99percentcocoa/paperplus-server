@@ -56,6 +56,14 @@ def main() -> None:
         default=None,
         help="Worksheet category. If omitted, inferred from the JSON payload (default: practice).",
     )
+    parser.add_argument(
+        "--template",
+        dest="template_name",
+        default=None,
+        help="Template name (e.g. regular, basic_omr). If omitted, inferred from the worksheet "
+        "category: basic_omr for --type omr, regular otherwise. Must be registered in "
+        "shared/worksheet_templates.py's QUESTIONS_PER_PAGE.",
+    )
     parser.add_argument("--dry-run", action="store_true", help="Show what would be inserted without writing to the DB.")
     args = parser.parse_args()
 
@@ -71,6 +79,7 @@ def main() -> None:
     print(f"JSON file: {json_path}")
     print(f"worksheet_id: {args.id if args.id is not None else 'auto'}")
     print(f"worksheet_category: {args.worksheet_type or '(inferred)'}")
+    print(f"template: {args.template_name or '(inferred)'}")
 
     if args.dry_run:
         print("Dry run: nothing inserted.")
@@ -82,6 +91,7 @@ def main() -> None:
             worksheet_json,
             worksheet_id=args.id,
             worksheet_category=args.worksheet_type,
+            template_name=args.template_name,
         )
 
     print(f"Inserted worksheet_id={result['worksheet_id']} with {len(result['question_ids'])} questions")
