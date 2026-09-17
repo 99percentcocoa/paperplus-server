@@ -8,7 +8,15 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      # Overridable via POSTGRES_HOST_PORT in .env -- defaults to 5433, not 5432, because dev
+      # machines running this project also tend to have a local (non-docker) Postgres already
+      # bound to 5432 (used for local, non-docker dev all session). Whichever one binds first
+      # wins the host port; the other silently never gets it, and `psql localhost:5432` then
+      # unexpectedly answers from the wrong Postgres instance with the wrong credentials. This
+      # only affects host-side access (psql from your terminal) -- api-service's own
+      # DATABASE_URL uses the internal Docker DNS name `postgres:5432`, never the host mapping,
+      # so it's unaffected either way.
+      - "${POSTGRES_HOST_PORT:-5433}:5432"
     restart: unless-stopped
 
   api-service:
