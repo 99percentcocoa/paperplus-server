@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>PaperPlus Admin</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="#/">PaperPlus</a>
+      <nav>
+        <a href="#/" data-nav="overview">Overview</a>
+        <a href="#/submissions" data-nav="submissions">Submissions</a>
+        <a href="#/reviews" data-nav="reviews">Failed scans <span id="open-badge" class="badge" hidden></span></a>
+      </nav>
+      <label class="whoami">Your name
+        <input id="whoami" type="text" placeholder="required to save edits" maxlength="100">
+      </label>
+    </div>
+  </header>
+  <main id="app" class="container"><p class="muted">Loading…</p></main>
+  <div id="toast" class="toast" hidden></div>
+  <script src="app.js"></script>
+</body>
+</html>

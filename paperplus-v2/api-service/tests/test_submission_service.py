@@ -13,6 +13,7 @@ from app.models import (
     Question,
     QuestionOption,
     School,
+    Scan,
     ScanReview,
     Skill,
     Student,
@@ -176,6 +177,52 @@ def test_handle_incoming_image_draws_and_sends_checked_image(session: Session, w
     assert Path(saved.checked_image_path).is_file()
 
 
+def test_graded_scan_is_recorded_with_its_vision_result_and_linked_to_the_submission(session: Session, worksheet_with_questions):
+    worksheet, student = worksheet_with_questions
+    result = ProcessingResult(
+        worksheet_id=worksheet.worksheet_id, page_no=1, first_question_index=1, template_name="regular",
+        roll_number=student.student_id, roll_number_confidence=None, question_paper_code="",
+        question_marks=[
+            QuestionMark(question_index=1, marked_option="A", confidence=0.9, roi_x1=1, roi_y1=2, roi_x2=3, roi_y2=4),
+            QuestionMark(question_index=2, marked_option="B", confidence=0.8),
+        ],
+        dewarped_image_path="/x/dewarped.jpg",
+    )
+
+    handle_incoming_image(session, FakeVisionClient(result), FakeCommunicationClient(), "+911234567890", "/fake/path.jpg", "corr-scan-1")
+
+    scan = session.exec(select(Scan).where(Scan.correlation_id == "corr-scan-1")).one()
+    submission_id = select_submission_ids(session, worksheet.worksheet_id)[0]
+    assert (scan.outcome, scan.submission_id, scan.upload_path, scan.dewarped_path) == ("graded", submission_id, "/fake/path.jpg", "/x/dewarped.jpg")
+    assert (scan.worksheet_id, scan.page_no, scan.roll_number, scan.from_number) == (worksheet.worksheet_id, 1, student.student_id, "+911234567890")
+    assert scan.vision_result["question_marks"][0]["roi_x2"] == 3 and len(scan.vision_result["question_marks"]) == 2
+
+
+def test_failed_scans_keep_their_vision_result_and_are_linked_from_the_review(session: Session, worksheet_with_questions):
+    worksheet, _student = worksheet_with_questions
+    result = ProcessingResult(
+        worksheet_id=worksheet.worksheet_id, page_no=1, first_question_index=1, template_name="regular",
+        roll_number="0000", roll_number_confidence=None, question_paper_code="",
+        question_marks=[QuestionMark(question_index=1, marked_option="A", confidence=0.9)],
+    )
+
+    handle_incoming_image(session, FakeVisionClient(result), FakeCommunicationClient(), "+911234567890", "/fake/path.jpg", "corr-scan-2")
+
+    review = session.exec(select(ScanReview).where(ScanReview.correlation_id == "corr-scan-2")).one()
+    scan = session.get(Scan, review.scan_id)
+    assert (scan.outcome, scan.submission_id, scan.roll_number) == ("failed", None, "0000")
+    assert scan.vision_result["question_marks"][0]["marked_option"] == "A"  # what an admin needs to re-grade it later
+    session.exec(delete(ScanReview).where(ScanReview.review_id == review.review_id))
+    session.commit()
+
+    # A vision-service failure is recorded too, just without a result.
+    handle_incoming_image(session, FailingFakeVisionClient(), FakeCommunicationClient(), "+911234567890", "/fake/other.jpg", "corr-scan-3")
+    failed = session.exec(select(Scan).where(Scan.correlation_id == "corr-scan-3")).one()
+    assert (failed.outcome, failed.vision_result, failed.upload_path) == ("failed", None, "/fake/other.jpg")
+    session.exec(delete(ScanReview).where(ScanReview.scan_id == failed.id))
+    session.commit()
+
+
 def test_handle_incoming_image_reports_unrecognized_student(session: Session, worksheet_with_questions):
     worksheet, _student = worksheet_with_questions
 
@@ -256,10 +303,11 @@ def test_handle_incoming_image_records_failed_scan_review_on_vision_error(sessio
 
     assert len(comm_client.sent_messages) == 1
     review = session.exec(
-        select(ScanReview).where(ScanReview.error_reason.contains("connection refused"))
+        select(ScanReview).where(ScanReview.correlation_id == "corr-vision-fail")
     ).first()
     assert review is not None
     assert review.status == "failed"
+    assert "connection refused" in review.error_reason
     assert review.student_id is None
     assert review.worksheet_id is None
     session.exec(delete(ScanReview).where(ScanReview.review_id == review.review_id))

@@ -27,8 +27,9 @@ from app.domain.submission_state import (
     transition_to_registering,
     transition_to_scoring,
 )
-from app.models import Attempt, Question, ScanReview, Student, Submission, Worksheet
-from app.models.submission import ProcessingState, ScanReviewStatus
+from app.models import Attempt, Question, Scan, ScanReview, Student, Submission, Worksheet
+from app.models.core import utcnow
+from app.models.submission import ProcessingState, ScanOutcome, ScanReviewStatus
 from app.routes.files import checked_image_url
 from app.services.communication import CommunicationClient
 from app.services.sheets_logging import log_to_sheet_async
@@ -75,8 +76,9 @@ def handle_incoming_image(
         result = vision_client.process(image_path, correlation_id)
     except VisionClientError as exc:
         logger.exception("vision-service call failed")
+        scan = _record_scan(session, correlation_id, from_number, image_path)
         _record_scan_review(
-            session, status=ScanReviewStatus.FAILED, error_reason=f"vision-service call failed: {exc}"
+            session, status=ScanReviewStatus.FAILED, error_reason=f"vision-service call failed: {exc}", scan=scan,
         )
         comm_client.send_message(from_number, MESSAGES["vision_failed"])
         return
@@ -88,6 +90,7 @@ def handle_incoming_image(
         result.roll_number, result.roll_number_confidence, result.question_paper_code,
         len(result.question_marks),
     )
+    scan = _record_scan(session, correlation_id, from_number, image_path, result)
 
     try:
         student = _validate_student(session, result.roll_number)
@@ -96,6 +99,7 @@ def handle_incoming_image(
     except InvalidStudentError as exc:
         _record_scan_review(
             session, status=ScanReviewStatus.FAILED, error_reason=str(exc), detected_roll_number=result.roll_number,
+            scan=scan,
         )
         comm_client.send_message(from_number, MESSAGES["invalid_student"])
         return
@@ -105,7 +109,7 @@ def handle_incoming_image(
         # _validate_student already succeeded on the line above.
         _record_scan_review(
             session, status=ScanReviewStatus.FAILED, error_reason=str(exc),
-            student_id=student.student_id, detected_roll_number=result.roll_number,
+            student_id=student.student_id, detected_roll_number=result.roll_number, scan=scan,
         )
         comm_client.send_message(from_number, MESSAGES["invalid_worksheet"])
         return
@@ -121,6 +125,7 @@ def handle_incoming_image(
         _record_scan_review(
             session, status=ScanReviewStatus.NEEDS_REVIEW, error_reason=str(exc),
             student_id=student.student_id, worksheet_id=worksheet.worksheet_id, detected_roll_number=result.roll_number,
+            scan=scan,
         )
         comm_client.send_message(from_number, MESSAGES["invalid_answer_key"])
         return
@@ -128,20 +133,64 @@ def handle_incoming_image(
     scanned_answers, page_score = grade_marks(result.question_marks, answer_key)
     page_range = resolve_page_range(session, worksheet.worksheet_id, result.page_no)
 
+    submission, answers_payload, score = persist_graded_scan(
+        session,
+        student=student,
+        worksheet=worksheet,
+        from_number=from_number,
+        scanned_answers=scanned_answers,
+        page_range=page_range,
+        template_name=result.template_name,
+        roll_number=result.roll_number,
+        correlation_id=correlation_id,
+    )
+    scan.outcome = ScanOutcome.GRADED.value
+    scan.submission_id = submission.submission_id
+    session.add(scan)
+    session.commit()
+    close_superseded_reviews(
+        session, roll_number=result.roll_number, student_id=student.student_id,
+        worksheet_id=worksheet.worksheet_id, submission_id=submission.submission_id, page_no=result.page_no,
+    )
+
+    comm_client.send_message(from_number, f"Your marks: {score}/{len(answers_payload)}")
+
+    _annotate_and_send_checked_image(
+        session, comm_client, submission, result, scanned_answers, page_score, from_number, correlation_id, scan,
+    )
+
+
+def persist_graded_scan(
+    session: Session,
+    *,
+    student: Student,
+    worksheet: Worksheet,
+    from_number: str | None,
+    scanned_answers: list[dict],
+    page_range: tuple[int, int] | None,
+    template_name: str | None,
+    roll_number: str | None,
+    correlation_id: str,
+) -> tuple[Submission, list[dict], int]:
+    """Everything after grading: merge this page into the student's submission, walk the state
+    machine, rewrite attempts, refresh mastery/level, mark graded. Shared by the WhatsApp webhook
+    flow and the admin dashboard's failed-scan resolution so both persist identically.
+    Returns (submission, merged answers_payload, merged score).
+    """
     submission, answers_payload, score = _create_or_overwrite_submission(
         session, student, worksheet, from_number, scanned_answers, page_range
     )
 
     transition_to_preprocessing(session, submission, service_name="api-service", correlation_id=correlation_id)
     transition_to_dewarped(session, submission, service_name="api-service", correlation_id=correlation_id,
-                            detail={"template_name": result.template_name})
+                            detail={"template_name": template_name})
     transition_to_registering(session, submission, service_name="api-service", correlation_id=correlation_id,
-                               detail={"roll_number": result.roll_number})
+                               detail={"roll_number": roll_number})
     transition_to_scoring(session, submission, service_name="api-service", correlation_id=correlation_id)
 
-    attempts_count = _insert_attempts(session, student.student_id, submission, worksheet.worksheet_id, answers_payload)
-    affected_skills = _affected_skills(session, worksheet.worksheet_id, answers_payload)
-    for skill_code in affected_skills:
+    attempts_count = insert_attempts(session, student.student_id, submission, worksheet.worksheet_id, answers_payload)
+    skill_codes = affected_skills(session, worksheet.worksheet_id, answers_payload)
+    for skill_code in skill_codes:
         recalculate_skill_mastery(session, student.student_id, skill_code)
     level_update = evaluate_and_update_level(session, student.student_id)
 
@@ -149,12 +198,85 @@ def handle_incoming_image(
         session, submission, service_name="api-service", correlation_id=correlation_id,
         detail={"score": score, "attempts_count": attempts_count, "level_update": level_update},
     )
+    return submission, answers_payload, score
 
-    comm_client.send_message(from_number, f"Your marks: {score}/{len(answers_payload)}")
 
-    _annotate_and_send_checked_image(
-        session, comm_client, submission, result, scanned_answers, page_score, from_number, correlation_id,
-    )
+SYSTEM_RESOLVER = "system (later scan graded)"
+OPEN_REVIEW_STATUSES = (ScanReviewStatus.FAILED.value, ScanReviewStatus.NEEDS_REVIEW.value)
+
+
+def close_superseded_reviews(
+    session: Session,
+    *,
+    roll_number: str,
+    student_id: str,
+    worksheet_id: int,
+    submission_id: int,
+    match_worksheet_id: int | None = None,
+    page_no: int | None = None,
+    exclude_review_id: int | None = None,
+) -> int:
+    """Once a scan for (student, worksheet, page) grades successfully, earlier open failures for
+    that same situation ("student not registered yet", "worksheet not inserted yet", "no answer
+    key yet") are obsolete -- close them and link the submission instead of leaving them in the
+    dashboard's failed-scans list forever. Conservative: a review only matches on the same roll
+    number AND the same worksheet AND (if both known) the same page. A review with a real scan
+    whose worksheet couldn't be decoded is left open (it isn't demonstrably the same scan);
+    legacy reviews with no stored scan and no worksheet match on roll number alone.
+
+    roll_number / match_worksheet_id are what the scan *said* (an admin may have assigned it to a
+    different student or worksheet); student_id / worksheet_id are what it was graded as.
+    """
+    match_worksheet_id = match_worksheet_id if match_worksheet_id is not None else worksheet_id
+    reviews = session.exec(
+        select(ScanReview).where(
+            ScanReview.status.in_(OPEN_REVIEW_STATUSES), ScanReview.detected_roll_number == roll_number
+        )
+    ).all()
+    closed = 0
+    for review in reviews:
+        if review.review_id == exclude_review_id:
+            continue
+        scan = session.get(Scan, review.scan_id) if review.scan_id else None
+        review_worksheet = review.worksheet_id or (scan.worksheet_id if scan else None)
+        if review_worksheet is None:
+            if scan is not None:
+                continue
+        elif review_worksheet != match_worksheet_id:
+            continue
+        if scan is not None and scan.page_no is not None and page_no is not None and scan.page_no != page_no:
+            continue
+        review.status = ScanReviewStatus.CORRECTED.value
+        review.student_id = student_id
+        review.worksheet_id = worksheet_id
+        review.submission_id = submission_id
+        review.corrected_by = SYSTEM_RESOLVER
+        review.corrected_at = review.updated_at = utcnow()
+        session.add(review)
+        closed += 1
+    if closed:
+        session.commit()
+        logger.info("Closed %s earlier failed-scan review(s) superseded by a graded scan", closed)
+    return closed
+
+
+def _record_scan(session: Session, correlation_id: str, from_number: str | None, image_path: str, result=None) -> Scan:
+    """One Scan row per received image (success or failure) -- keeps the file locations and the
+    full vision result so the dashboard can show and re-grade it later."""
+    scan = Scan(correlation_id=correlation_id, from_number=from_number, upload_path=image_path)
+    if result is not None:
+        scan.dewarped_path = result.dewarped_image_path
+        scan.debug_path = result.debug_image_path
+        scan.worksheet_id = result.worksheet_id
+        scan.page_no = result.page_no
+        scan.template_name = result.template_name
+        scan.roll_number = result.roll_number
+        scan.question_paper_code = result.question_paper_code
+        scan.vision_result = result.model_dump()
+    session.add(scan)
+    session.commit()
+    session.refresh(scan)
+    return scan
 
 
 def _record_scan_review(
@@ -165,6 +287,7 @@ def _record_scan_review(
     student_id: str | None = None,
     worksheet_id: int | None = None,
     detected_roll_number: str | None = None,
+    scan: Scan | None = None,
 ) -> None:
     """Persists a failed/needs-review scan that never reached a Submission row (schema requires
     submission_id on ProcessingEvent, but ScanReview.submission_id is nullable for exactly this
@@ -179,6 +302,7 @@ def _record_scan_review(
             worksheet_id=worksheet_id,
             detected_roll_number=detected_roll_number,
             correlation_id=correlation_id_var.get(),
+            scan_id=scan.id if scan is not None else None,
             status=status.value,
             error_reason=error_reason,
         )
@@ -195,6 +319,7 @@ def _annotate_and_send_checked_image(
     page_score: int,
     from_number: str,
     correlation_id: str,
+    scan: Scan | None = None,
 ) -> None:
     """Draws the correct/incorrect annotation for THIS scanned page (not the merged multi-page
     total -- the image only has this page's pixels) and sends it back over WhatsApp, mirroring
@@ -224,6 +349,9 @@ def _annotate_and_send_checked_image(
     submission.checked_image_path = str(output_path)
     submission.checked_image_url = url
     session.add(submission)
+    if scan is not None:
+        scan.checked_image_path = str(output_path)
+        session.add(scan)
     session.commit()
 
     comm_client.send_image(from_number, url, "")
@@ -286,6 +414,9 @@ def _create_or_overwrite_submission(
         existing.score = score
         existing.from_number = from_number
         existing.answers_json = merged_answers
+        # A rescan is a new submission event: without this the dashboard's recent-submissions
+        # list (ordered by submitted_at) shows nothing new after a resend of the same worksheet.
+        existing.submitted_at = utcnow()
         # Reset to UPLOADED so the caller's transition_to_* calls are valid again (a prior
         # submission is already GRADED/FAILED, which has no further allowed transitions).
         existing.state = ProcessingState.UPLOADED.value
@@ -310,7 +441,7 @@ def _create_or_overwrite_submission(
     return submission, merged_answers, score
 
 
-def _insert_attempts(session: Session, student_id: str, submission: Submission, worksheet_id: int, answers_payload: list[dict]) -> int:
+def insert_attempts(session: Session, student_id: str, submission: Submission, worksheet_id: int, answers_payload: list[dict]) -> int:
     questions_by_index = {
         q.index: q for q in session.exec(select(Question).where(Question.worksheet_id == worksheet_id)).all()
     }
@@ -334,7 +465,7 @@ def _insert_attempts(session: Session, student_id: str, submission: Submission, 
     return count
 
 
-def _affected_skills(session: Session, worksheet_id: int, answers_payload: list[dict]) -> set[str]:
+def affected_skills(session: Session, worksheet_id: int, answers_payload: list[dict]) -> set[str]:
     questions_by_index = {
         q.index: q for q in session.exec(select(Question).where(Question.worksheet_id == worksheet_id)).all()
     }

@@ -1,7 +1,7 @@
 from datetime import datetime
 from enum import Enum
 
-from sqlalchemy import CheckConstraint, Column
+from sqlalchemy import CheckConstraint, Column, ForeignKey, Integer
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 
@@ -64,6 +64,42 @@ class Attempt(SQLModel, table=True):
     attempted_at: datetime = Field(default_factory=utcnow)
 
 
+class ScanOutcome(str, Enum):
+    GRADED = "graded"
+    FAILED = "failed"
+
+
+class Scan(SQLModel, table=True):
+    """One row per scanned page image, success or failure. Keeps the file locations and the full
+    vision-service result (question_marks with ROI boxes, page_no, question_paper_code) that
+    used to be logged and discarded, so the admin dashboard can show the scan and correct or
+    re-grade it later without re-running vision.
+    """
+
+    __tablename__ = "scans"
+
+    id: int | None = Field(default=None, primary_key=True)
+    correlation_id: str = Field(index=True)
+    from_number: str | None = None
+    upload_path: str | None = None
+    dewarped_path: str | None = None
+    debug_path: str | None = None
+    checked_image_path: str | None = None
+    # Deliberately no FK: an unrecognized worksheet id is one of the failures this row records.
+    worksheet_id: int | None = Field(default=None, index=True)
+    page_no: int | None = None
+    template_name: str | None = None
+    roll_number: str | None = None
+    question_paper_code: str | None = None
+    vision_result: dict | None = Field(default=None, sa_column=Column(JSONB))
+    outcome: str = Field(default=ScanOutcome.FAILED.value)
+    submission_id: int | None = Field(
+        default=None,
+        sa_column=Column(Integer, ForeignKey("submissions.submission_id", ondelete="SET NULL"), index=True),
+    )
+    created_at: datetime = Field(default_factory=utcnow)
+
+
 class ScanReview(SQLModel, table=True):
     __tablename__ = "scan_reviews"
     __table_args__ = (
@@ -79,6 +115,10 @@ class ScanReview(SQLModel, table=True):
     worksheet_id: int | None = Field(default=None, foreign_key="worksheets.worksheet_id", index=True)
     detected_roll_number: str | None = None
     correlation_id: str | None = Field(default=None, index=True)
+    scan_id: int | None = Field(
+        default=None,
+        sa_column=Column(Integer, ForeignKey("scans.id", ondelete="SET NULL"), index=True),
+    )
     status: str = Field(default=ScanReviewStatus.FAILED.value)
     error_reason: str | None = None
     original_answers: dict | None = Field(default=None, sa_column=Column(JSONB))
