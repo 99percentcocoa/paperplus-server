@@ -24,6 +24,7 @@ CLAUDE.md
 *.tmp
 *.zip
 paperplus.sql
+paperplus_16092026.sql
 
 # System or editor files
 .DS_Store
