@@ -23,12 +23,14 @@ sync-db.sh
 *.tmp
 *.zip
 paperplus.sql
+paperplus_16092026.sql
 
 # System or editor files
 .DS_Store
 .idea/
 .vscode/
 PaperPlus System.md
+CLAUDE.md
 
 # Uploads or generated data
 downloads/
