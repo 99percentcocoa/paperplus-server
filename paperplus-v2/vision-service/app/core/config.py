@@ -6,7 +6,6 @@ class Settings(BaseSettings):
 
     environment: str = "development"
     shared_secret: str = "change-me"
-    storage_root: str = "./files"
 
     target_width: int = 1240
     target_height: int = 1754

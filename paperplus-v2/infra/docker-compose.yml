@@ -44,8 +44,8 @@ services:
       context: ..
       dockerfile: vision-service/Dockerfile
     env_file: .env
-    volumes:
-      - files_data:/app/files
+    # No volumes: vision-service is stateless. The photo arrives as base64 in the /process request
+    # and the dewarped page goes back in the response, so it shares nothing with api-service.
     # Not exposed externally on purpose — only api-service (and nginx via api-service) reach it.
     expose:
       - "8100"

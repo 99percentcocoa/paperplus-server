@@ -83,7 +83,6 @@ class Scan(SQLModel, table=True):
     from_number: str | None = None
     upload_path: str | None = None
     dewarped_path: str | None = None
-    debug_path: str | None = None
     checked_image_path: str | None = None
     # Deliberately no FK: an unrecognized worksheet id is one of the failures this row records.
     worksheet_id: int | None = Field(default=None, index=True)

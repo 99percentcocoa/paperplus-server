@@ -1,6 +1,8 @@
 """Admin dashboard JSON API + generalized /files route, driven through TestClient with the get_session
 dependency pointed at the test's own session (same pattern as test_webhook.py)."""
 
+from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlmodel import select
@@ -50,7 +52,8 @@ def test_submission_detail_has_answer_key_and_servable_images(scan_env, client):
     assert q2["labels"] == ["A", "B", "C", "D"]
 
     images = detail["scans"][0]["images"]
-    assert all(images[k] for k in ("upload", "dewarped", "checked"))
+    assert all(images[k] for k in ("upload", "checked"))
+    assert "dewarped" not in images  # stored for redrawing the checked image, but never exposed
     served = client.get(images["checked"])
     assert served.status_code == 200 and served.headers["content-type"] == "image/jpeg"
     assert served.headers["x-robots-tag"] == "noindex, nofollow"
@@ -94,7 +97,7 @@ def test_failed_scan_appears_in_reviews_and_can_be_resolved(scan_env, client):
     assert detail["resolvable"] is True and detail["worksheet_missing"] is False
     assert [q["detected_option"] for q in detail["questions"]] == ["A", "B", "A", ""]
     assert all(q["correct_option"] == "A" for q in detail["questions"])
-    assert detail["scan"]["images"]["dewarped"]
+    assert detail["scan"]["images"]["upload"]
 
     resolved = client.post(
         f"/api/admin/reviews/{item['review_id']}/resolve",
@@ -139,7 +142,9 @@ def test_files_route_kinds_and_guards(scan_env, client):
     name = f"crt-{scan_env.worksheet.worksheet_id}-1"
 
     assert client.get(f"/files/uploads/{name}.jpg").status_code == 200
-    assert client.get(f"/files/dewarped/{name}_dewarped.jpg").status_code == 200
+    assert Path(scan_env.storage / "dewarped" / f"{name}_dewarped.jpg").is_file()  # kept on disk...
+    assert client.get(f"/files/dewarped/{name}_dewarped.jpg").status_code == 404  # ...but not served
+    assert client.get(f"/files/debug/{name}_debug.jpg").status_code == 404
     assert client.get(f"/files/checked/{name}_checked.jpg").headers["content-type"] == "image/jpeg"
     assert client.get("/files/secrets/anything.jpg").status_code == 404  # unknown kind
     assert client.get("/files/checked/missing.jpg").status_code == 404

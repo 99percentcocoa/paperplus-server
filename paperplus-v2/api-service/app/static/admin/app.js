@@ -173,11 +173,11 @@ function reviewsTable(items) {
 
 // ---------- image viewer ----------
 function imageViewer(scans) {
-  // scans: [{page_no, images:{checked, upload, dewarped}}]
+  // scans: [{page_no, images:{checked, upload}}]
   const views = [];
   for (const scan of scans) {
     const page = scan.page_no ? `Page ${scan.page_no} ` : "";
-    for (const [key, label] of [["checked", "checked"], ["upload", "original"], ["dewarped", "dewarped"]]) {
+    for (const [key, label] of [["checked", "checked"], ["upload", "original"]]) {
       if (scan.images[key]) views.push({ label: page + label, url: scan.images[key] });
     }
   }

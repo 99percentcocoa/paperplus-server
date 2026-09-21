@@ -2,12 +2,13 @@
 vision-service: stateless image processing (AprilTag/dewarp, OCR, bubble inference).
 """
 
-from contextlib import asynccontextmanager
-from pathlib import Path
-
+import base64
+import binascii
 import logging
+from contextlib import asynccontextmanager
 
 import cv2
+import numpy as np
 from fastapi import FastAPI, Header, HTTPException
 
 from app.core.config import settings
@@ -50,12 +51,12 @@ def process(request: ProcessRequest, x_service_secret: str | None = Header(defau
     correlation_id_var.set(request.correlation_id)
     _require_shared_secret(x_service_secret)
 
-    logger.info("Processing scan for image_path=%s template_hint=%s", request.image_path, request.template_hint)
+    logger.info("Processing scan template_hint=%s", request.template_hint)
 
-    image_array = cv2.imread(request.image_path)
+    image_array = _decode_image(request.image_b64)
     if image_array is None:
-        logger.error("Could not read image at %s", request.image_path)
-        raise HTTPException(status_code=400, detail=f"could not read image at {request.image_path}")
+        logger.error("Request image_b64 is not a decodable image")
+        raise HTTPException(status_code=400, detail="image_b64 is not a decodable image")
 
     try:
         result = process_scan(
@@ -77,9 +78,6 @@ def process(request: ProcessRequest, x_service_secret: str | None = Header(defau
         result.question_paper_code, len(result.question_marks),
     )
 
-    dewarped_path = _save_artifact(result.dewarped_image_array, request.correlation_id, "dewarped")
-    debug_path = _save_artifact(result.debug_image_array, request.correlation_id, "debug")
-
     return ProcessingResult(
         worksheet_id=result.worksheet_id,
         page_no=result.page_no,
@@ -100,17 +98,27 @@ def process(request: ProcessRequest, x_service_secret: str | None = Header(defau
             )
             for m in result.question_marks
         ],
-        dewarped_image_path=dewarped_path,
-        debug_image_path=debug_path,
+        dewarped_image_b64=_encode_image(result.dewarped_image_array),
     )
 
 
-def _save_artifact(image_array, correlation_id: str, role: str) -> str | None:
+def _decode_image(image_b64: str):
+    """base64 photo bytes -> BGR array, or None if it isn't valid base64 / a decodable image."""
+    try:
+        data = base64.b64decode(image_b64, validate=True)
+    except (binascii.Error, ValueError):
+        return None
+    if not data:
+        return None
+    return cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
+
+
+def _encode_image(image_array) -> str | None:
+    """BGR array -> base64 JPEG. vision-service writes nothing to disk; the dewarped page goes back
+    in the response because the ROI boxes it returns are in that image's coordinates."""
     if image_array is None:
         return None
-    output_dir = Path(settings.storage_root) / role
-    output_dir.mkdir(parents=True, exist_ok=True)
-    output_path = output_dir / f"{correlation_id}_{role}.jpg"
-    cv2.imwrite(str(output_path), image_array)
-    return str(output_path)
-
+    ok, buffer = cv2.imencode(".jpg", image_array)
+    if not ok:
+        return None
+    return base64.b64encode(buffer.tobytes()).decode("ascii")

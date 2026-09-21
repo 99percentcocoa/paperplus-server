@@ -266,7 +266,6 @@ def _record_scan(session: Session, correlation_id: str, from_number: str | None,
     scan = Scan(correlation_id=correlation_id, from_number=from_number, upload_path=image_path)
     if result is not None:
         scan.dewarped_path = result.dewarped_image_path
-        scan.debug_path = result.debug_image_path
         scan.worksheet_id = result.worksheet_id
         scan.page_no = result.page_no
         scan.template_name = result.template_name

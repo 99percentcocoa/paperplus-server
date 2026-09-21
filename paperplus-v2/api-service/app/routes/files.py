@@ -1,7 +1,7 @@
 """Serves generated artifacts over HTTP, replacing the old system's Flask static route
 (routes/file_routes.py: GET /checked/<filename>). Checked images need a fetchable URL because
 Exotel's WhatsApp API and the Sheets logging webhook both require one, not a local path -- see
-app.core.config.settings.public_base_url. uploads/dewarped/debug are served for the admin
+app.core.config.settings.public_base_url. uploads and checked images are served for the admin
 dashboard, which shows the original scan next to its annotated version.
 """
 
@@ -15,8 +15,9 @@ from app.core.config import settings
 
 router = APIRouter(prefix="/files")
 
-# URL kind -> subdirectory under storage_root (where api-service/vision-service write them).
-SERVED_KINDS = {"uploads", "dewarped", "debug", "checked"}
+# URL kind -> subdirectory under storage_root. The dewarped page is stored (checked images are
+# drawn on it) but deliberately not served: nothing needs to display it.
+SERVED_KINDS = {"uploads", "checked"}
 
 
 @router.get("/{kind}/{filename}")

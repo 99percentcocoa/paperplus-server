@@ -20,6 +20,7 @@ TFLite model, unlike tests/test_pipeline.py's fake-provider unit tests -- it's t
 file in this suite as a result (real model inference per image).
 """
 
+import base64
 import json
 from pathlib import Path
 
@@ -45,7 +46,10 @@ def test_scan_matches_ground_truth(client: TestClient, entry: dict):
 
     response = client.post(
         "/process",
-        json={"correlation_id": f"accuracy-{entry['input_file']}", "image_path": str(image_path)},
+        json={
+            "correlation_id": f"accuracy-{entry['input_file']}",
+            "image_b64": base64.b64encode(image_path.read_bytes()).decode("ascii"),
+        },
         headers={"x-service-secret": settings.shared_secret},
     )
     assert response.status_code == 200, response.text

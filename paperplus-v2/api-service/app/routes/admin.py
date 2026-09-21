@@ -68,7 +68,6 @@ def _artifact_url(kind: str, stored_path: str | None) -> str | None:
 def _scan_images(scan: Scan) -> dict:
     return {
         "upload": _artifact_url("uploads", scan.upload_path),
-        "dewarped": _artifact_url("dewarped", scan.dewarped_path),
         "checked": _artifact_url("checked", scan.checked_image_path),
     }
 

@@ -37,7 +37,6 @@ class ScanResult:
     question_paper_code: str | None
     question_marks: list[QuestionMark] = field(default_factory=list)
     dewarped_image_array: object = None
-    debug_image_array: object = None
 
 
 def _extract_roi(image_array, roi):
@@ -96,7 +95,6 @@ def process_scan(
         question_paper_code=question_paper_code,
         question_marks=question_marks,
         dewarped_image_array=cropped,
-        debug_image_array=cropped,
     )
 
 
