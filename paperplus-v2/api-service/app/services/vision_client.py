@@ -47,10 +47,25 @@ class HTTPVisionClient:
                 timeout=self._timeout,
             )
             response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            raise VisionClientError(
+                f"vision-service call failed ({exc.response.status_code}): {_error_detail(exc.response)}"
+            ) from exc
         except httpx.HTTPError as exc:
             raise VisionClientError(f"vision-service call failed: {exc}") from exc
 
         return _store_dewarped_image(ProcessingResult.model_validate(response.json()), correlation_id)
+
+
+def _error_detail(response: httpx.Response) -> str:
+    """Why vision-service rejected the request (e.g. which corner tags it could not find). httpx's
+    own status-error text leaves out the response body, which is where that reason lives. Capped
+    because FastAPI's validation errors can echo the request input, i.e. the whole base64 photo."""
+    try:
+        detail = response.json().get("detail")
+    except (ValueError, AttributeError):
+        detail = None
+    return str(detail or response.text or response.reason_phrase)[:300]
 
 
 def _store_dewarped_image(result: ProcessingResult, correlation_id: str) -> ProcessingResult:

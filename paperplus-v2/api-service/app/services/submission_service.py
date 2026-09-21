@@ -78,7 +78,7 @@ def handle_incoming_image(
         logger.exception("vision-service call failed")
         scan = _record_scan(session, correlation_id, from_number, image_path)
         _record_scan_review(
-            session, status=ScanReviewStatus.FAILED, error_reason=f"vision-service call failed: {exc}", scan=scan,
+            session, status=ScanReviewStatus.FAILED, error_reason=str(exc), scan=scan,
         )
         comm_client.send_message(from_number, MESSAGES["vision_failed"])
         return

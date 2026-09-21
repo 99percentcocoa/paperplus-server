@@ -37,7 +37,7 @@ class FakeResponse:
 
     def raise_for_status(self):
         if self.status_code >= 400:
-            raise httpx.HTTPStatusError("boom", request=httpx.Request("POST", "http://vision"), response=httpx.Response(self.status_code))
+            raise httpx.HTTPStatusError("boom", request=httpx.Request("POST", "http://vision"), response=httpx.Response(self.status_code, json=self._payload))
 
     def json(self):
         return self._payload
@@ -122,3 +122,20 @@ def test_http_errors_still_become_vision_client_errors(monkeypatch, storage, upl
     client = _client_with_response(monkeypatch, {"detail": "no corner tags"}, status=422)
     with pytest.raises(VisionClientError, match="vision-service call failed"):
         client.process(str(upload), "corr-vc-6")
+
+
+def test_rejection_reason_from_vision_service_is_kept(monkeypatch, storage, upload):
+    """httpx's own text for a 422 is just "Client error '422 ...'"; the actual reason (here, a photo
+    with a corner tag cut off) is in the response body and must reach scan_reviews.error_reason."""
+    reason = "Tag family '36h11' requires at least 4 detections, but got 3"
+    client = _client_with_response(monkeypatch, {"detail": reason}, status=422)
+    with pytest.raises(VisionClientError) as excinfo:
+        client.process(str(upload), "corr-vc-7")
+    assert "422" in str(excinfo.value) and reason in str(excinfo.value)
+
+
+def test_rejection_reason_is_capped_so_an_echoed_photo_cannot_flood_the_error(monkeypatch, storage, upload):
+    client = _client_with_response(monkeypatch, {"detail": [{"input": "x" * 5000}]}, status=422)
+    with pytest.raises(VisionClientError) as excinfo:
+        client.process(str(upload), "corr-vc-8")
+    assert len(str(excinfo.value)) < 400
