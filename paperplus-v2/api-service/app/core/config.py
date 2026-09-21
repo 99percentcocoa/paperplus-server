@@ -29,5 +29,17 @@ class Settings(BaseSettings):
 
     sheets_logging_url: str = ""
 
+    # Admin dashboard alert thresholds (app/services/monitoring.py). Env-overridable, e.g.
+    # ALERT_FAILURE_RATE=0.5. Rules that need a minimum sample size stay quiet below it, so one
+    # bad scan out of two doesn't flash a red banner.
+    alert_min_scans_for_failure_rate: int = 5
+    alert_failure_rate: float = 0.3  # failed / all scans over the last 24h
+    alert_vision_failures_1h: int = 3  # scans lost to vision-service errors in the last hour
+    alert_open_reviews: int = 10  # failed scans waiting for someone to review them
+    alert_review_age_hours: int = 24  # oldest unreviewed failed scan
+    alert_disk_warn_pct: float = 85.0
+    alert_disk_critical_pct: float = 95.0
+    alert_silence_hours: int = 48  # no scans at all for this long -> check the Exotel webhook; 0 disables
+
 
 settings = Settings()

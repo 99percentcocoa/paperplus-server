@@ -16,14 +16,13 @@ from app.core.config import settings
 from app.db.session import get_session
 from app.domain.grading import resolve_answer_key
 from app.models import Question, QuestionOption, School, Scan, ScanReview, Student, Submission, Worksheet
-from app.models.submission import ScanReviewStatus
 from app.routes.files import relative_artifact_url
 from app.services import corrections as corrections_service
+from app.services import monitoring as monitoring_service
 from app.services.corrections import CorrectionError, NotFoundError
+from app.services.monitoring import OPEN_REVIEW_STATUSES
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
-
-OPEN_REVIEW_STATUSES = (ScanReviewStatus.FAILED.value, ScanReviewStatus.NEEDS_REVIEW.value)
 
 
 class AnswerCorrection(BaseModel):
@@ -114,6 +113,12 @@ def summary(session: Session = Depends(get_session)) -> dict:
             select(func.count()).select_from(ScanReview).where(ScanReview.status.in_(OPEN_REVIEW_STATUSES))
         ),
     }
+
+
+@router.get("/monitoring")
+def monitoring(session: Session = Depends(get_session)) -> dict:
+    """Live health/throughput/backlog/disk snapshot plus any active alerts (see app.services.monitoring)."""
+    return monitoring_service.collect(session)
 
 
 @router.get("/submissions")

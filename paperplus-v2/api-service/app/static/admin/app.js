@@ -84,6 +84,62 @@ async function updateBadge() {
   } catch (_) { /* badge is best-effort */ }
 }
 
+const STATUS_LABEL = { ok: "Healthy", warning: "Warning", critical: "Critical" };
+
+function timeAgo(iso) {
+  if (!iso) return "never";
+  const mins = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins} min ago`;
+  const hours = Math.round(mins / 60);
+  return hours < 48 ? `${hours} h ago` : `${Math.round(hours / 24)} days ago`;
+}
+
+// Topbar dot: green/amber/red for the worst active alert; red too when the API itself is unreachable.
+function applyStatus(m) {
+  const dot = document.getElementById("status-dot");
+  if (!m) {
+    dot.className = "status-dot critical";
+    dot.title = "Monitoring unavailable — can't reach the dashboard API";
+    return;
+  }
+  dot.className = "status-dot " + m.status;
+  dot.title = m.alerts.length ? m.alerts.map((a) => a.message).join("\n") : "All systems healthy";
+}
+
+async function updateStatus() {
+  try { applyStatus(await api("/monitoring")); } catch (_) { applyStatus(null); }
+}
+
+function statusPanel(m) {
+  if (!m) return h("div", { class: "notice error" }, "Monitoring data is unavailable right now.");
+  const { services, storage, activity: a, backlog: b } = m;
+  const has = (code) => m.alerts.some((x) => x.code === code);
+  const stat = (label, value, level, hint) =>
+    h("div", { class: "card kpi" + (level ? " " + level : ""), title: hint || null },
+      h("div", { class: "label" }, label), h("div", { class: "value" }, value));
+  const svc = (s) => (s.ok ? `OK · ${s.latency_ms} ms` : `DOWN · ${s.error}`);
+  const rate = a && a.failure_rate_24h !== null ? `${Math.round(a.failure_rate_24h * 100)}%` : "—";
+  return h("div", { class: "card status-panel" },
+    h("div", { class: "status-head" },
+      h("h2", {}, "System status"),
+      h("span", { class: "pill " + m.status }, STATUS_LABEL[m.status]),
+      h("span", { class: "muted" }, `checked ${new Date(m.generated_at).toLocaleTimeString()}`)),
+    m.alerts.map((x) => h("div", { class: "notice" + (x.severity === "critical" ? " error" : "") }, x.message)),
+    h("div", { class: "kpis compact" },
+      stat("Database", svc(services.database), services.database.ok ? "" : "alert"),
+      stat("Vision service", svc(services.vision_service), services.vision_service.ok ? "" : "alert"),
+      a && stat("Scans (1h / 24h)", `${a.scans_1h} / ${a.scans_24h}`),
+      a && stat("Failure rate (24h)", rate, has("high_failure_rate") ? "warn" : ""),
+      a && stat("Last scan", timeAgo(a.last_scan_at), has("no_recent_scans") ? "warn" : ""),
+      b && stat("Oldest failed scan", b.oldest_open_review_hours === null ? "—" : `${b.oldest_open_review_hours} h`,
+        has("stale_review") ? "warn" : ""),
+      storage.ok
+        ? stat("Storage used", `${storage.used_pct}%`, has("disk_critical") ? "alert" : has("disk_warning") ? "warn" : "",
+            `${storage.free_gb} GB free of ${storage.total_gb} GB`)
+        : stat("Storage", "unknown", "warn")));
+}
+
 function pager(total, offset, limit, go) {
   return h("div", { class: "pager" },
     h("button", { disabled: offset <= 0, onclick: () => go(Math.max(0, offset - limit)) }, "← Prev"),
@@ -147,14 +203,34 @@ function imageViewer(scans) {
 // ---------- views ----------
 async function overviewView() {
   setActiveNav("overview");
-  const [summary, subs, reviews] = await Promise.all([
-    api("/summary"), api("/submissions?limit=10"), api("/reviews?status=open&limit=10"),
-  ]);
+  // Monitoring is fetched independently: when the database is down the other calls fail, and that is
+  // exactly when the status panel matters most.
+  const monitoringPromise = api("/monitoring").catch(() => null);
+  const scheduleRefresh = () => {
+    refreshTimer = setInterval(() => { if (!location.hash || location.hash === "#/") overviewView().catch(() => {}); }, 30000);
+  };
+  let summary, subs, reviews;
+  try {
+    [summary, subs, reviews] = await Promise.all([
+      api("/summary"), api("/submissions?limit=10"), api("/reviews?status=open&limit=10"),
+    ]);
+  } catch (e) {
+    const m = await monitoringPromise;
+    applyStatus(m);
+    app.replaceChildren(
+      h("h1", {}, "PaperPlus Dashboard"), statusPanel(m),
+      h("div", { class: "notice error" }, `Couldn't load dashboard data: ${e.message}`));
+    scheduleRefresh();
+    return;
+  }
+  const monitoring = await monitoringPromise;
+  applyStatus(monitoring);
   const kpi = (label, value, alert) =>
     h("div", { class: "card kpi" + (alert ? " alert" : "") }, h("div", { class: "label" }, label), h("div", { class: "value" }, value));
   app.replaceChildren(
     h("h1", {}, "PaperPlus Dashboard"),
     h("p", { class: "muted" }, "Auto-refreshes every 30 seconds."),
+    statusPanel(monitoring),
     h("div", { class: "kpis" },
       kpi("Schools", summary.schools), kpi("Students", summary.students),
       kpi("Submissions", summary.submissions), kpi("Last 24h", summary.submissions_24h),
@@ -167,7 +243,7 @@ async function overviewView() {
   const badge = document.getElementById("open-badge");
   badge.hidden = !summary.open_reviews;
   badge.textContent = summary.open_reviews;
-  refreshTimer = setInterval(() => { if (!location.hash || location.hash === "#/") overviewView().catch(() => {}); }, 30000);
+  scheduleRefresh();
 }
 
 async function submissionsView(params) {
@@ -452,12 +528,13 @@ async function route() {
     else if (parts[0] === "reviews" && parts[1]) await reviewView(parts[1]);
     else if (parts[0] === "reviews") await reviewsView(params);
     else app.replaceChildren(h("p", {}, "Page not found. ", h("a", { href: "#/" }, "Go to overview")));
-    if (parts.length) updateBadge();
+    if (parts.length) { updateBadge(); updateStatus(); }
   } catch (e) {
     app.replaceChildren(h("div", { class: "notice error" }, `Something went wrong: ${e.message}`), h("p", {}, h("a", { href: "#/" }, "← Back to overview")));
   }
   window.scrollTo(0, 0);
 }
 
+setInterval(updateStatus, 60000);
 window.addEventListener("hashchange", route);
 route();
