@@ -145,8 +145,12 @@ def insert_worksheet(
     worksheet_id: int | None = None,
     worksheet_category: str | None = None,
     template_name: str | None = None,
+    commit: bool = True,
 ) -> dict:
     """Insert a worksheet and its questions/options. Returns {worksheet_id, question_ids}.
+
+    commit=False flushes instead of committing, so a caller inserting many worksheets (the legacy
+    data migration) can wrap them in one transaction and roll the whole thing back.
 
     Raises InvalidSubmissionDataError if worksheet_json has no questions. Raises ValueError if
     template_name isn't registered in shared.worksheet_templates.QUESTIONS_PER_PAGE.
@@ -241,7 +245,10 @@ def insert_worksheet(
 
         question_ids.append(question.question_id)
 
-    session.commit()
+    if commit:
+        session.commit()
+    else:
+        session.flush()
     return {"worksheet_id": worksheet.worksheet_id, "question_ids": question_ids}
 
 
