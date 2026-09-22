@@ -6,3 +6,11 @@ files/
 shared_dev_files/
 *.egg-info/
 .pytest_cache/
+
+# The outer paperplus_server repo's root .gitignore has a bare `nginx.conf` rule (for the old
+# system's own config, under "Local settings and secrets") that also matches this file at any
+# depth, including here -- as a result infra/nginx.conf was never tracked at all, on any branch,
+# and got silently deleted by a git clean along with the actually-ephemeral files above. It holds
+# no secrets (just internal service proxy config), so un-ignore it explicitly rather than edit
+# the outer repo's rule, which may still matter for the old system.
+!infra/nginx.conf
