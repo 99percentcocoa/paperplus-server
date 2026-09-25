@@ -427,3 +427,66 @@ def list_schools(session: Session = Depends(get_session)) -> list[dict]:
         {"school_code": s.school_code, "school_name": s.school_name, "student_count": counts.get(s.school_code, 0)}
         for s in schools
     ]
+
+
+@router.get("/schools/{school_code}")
+def school_detail(school_code: str, session: Session = Depends(get_session)) -> dict:
+    """Every active student at a school, with their last submission and last 3 worksheets
+    (level + marks) -- so a facilitator visiting a school can see at a glance who has and hasn't
+    submitted. Students who have never submitted sort first, then oldest-last-submission next,
+    so whoever needs following up with is at the top rather than buried alphabetically.
+    """
+    school = session.get(School, school_code)
+    if school is None:
+        raise HTTPException(status_code=404, detail="school not found")
+
+    students = session.exec(
+        select(Student)
+        .where(Student.student_school_code == school_code, Student.is_active.is_(True))
+        .order_by(Student.student_name)
+    ).all()
+    student_ids = [s.student_id for s in students]
+
+    submissions_by_student: dict[str, list] = {}
+    if student_ids:
+        rows = session.exec(
+            select(Submission, Worksheet.worksheet_level)
+            .join(Worksheet, Worksheet.worksheet_id == Submission.worksheet_id)
+            .where(Submission.student_id.in_(student_ids))
+            .order_by(Submission.submitted_at.desc())
+        ).all()
+        for submission, level in rows:
+            submissions_by_student.setdefault(submission.student_id, []).append((submission, level))
+
+    def student_row(student: Student) -> dict:
+        recent = submissions_by_student.get(student.student_id, [])
+        last_submitted_at = recent[0][0].submitted_at if recent else None
+        return {
+            "student_id": student.student_id,
+            "student_name": student.student_name,
+            "current_level": student.current_level,
+            "last_submitted_at": _iso(last_submitted_at),
+            # submitted_at is a naive DateTime column (no tzinfo -- a known pre-existing gap,
+            # see PROGRESS.md) -- datetime.min here must stay naive too, or comparing it against
+            # a real (naive) submitted_at raises "can't compare offset-naive and offset-aware".
+            "_sort_key": (last_submitted_at is not None, last_submitted_at or datetime.min),
+            "recent_worksheets": [
+                {
+                    "submission_id": submission.submission_id,
+                    "worksheet_id": submission.worksheet_id,
+                    "level": level,
+                    "score": submission.score,
+                    "total_questions": len(submission.answers_json or []),
+                }
+                for submission, level in recent[:3]
+            ],
+        }
+
+    rows = sorted((student_row(s) for s in students), key=lambda r: (r["_sort_key"], r["student_name"]))
+    for row in rows:
+        del row["_sort_key"]
+
+    return {
+        "school": {"school_code": school.school_code, "school_name": school.school_name},
+        "students": rows,
+    }

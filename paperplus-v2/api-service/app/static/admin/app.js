@@ -515,6 +515,41 @@ async function reviewView(id, overrides = {}, keep = {}) {
   search().catch((e) => toast(e.message, true));
 }
 
+async function schoolsView() {
+  setActiveNav("schools");
+  const data = await api("/schools");
+  app.replaceChildren(
+    h("h1", {}, "Schools"),
+    h("div", { class: "card" }, h("div", { class: "table-wrap" }, h("table", {},
+      h("thead", {}, h("tr", {}, ["School", "Code", "Students"].map((t) => h("th", {}, t)))),
+      h("tbody", {}, data.length ? data.map((s) =>
+        h("tr", { class: "clickable", onclick: () => (location.hash = `#/schools/${s.school_code}`) },
+          h("td", {}, s.school_name || "—"),
+          h("td", {}, s.school_code),
+          h("td", {}, s.student_count))) : [emptyRow(3, "No schools yet.")])))));
+}
+
+async function schoolView(code) {
+  setActiveNav("schools");
+  const data = await api(`/schools/${encodeURIComponent(code)}`);
+  const worksheetChips = (student) => student.recent_worksheets.length
+    ? student.recent_worksheets.map((w) =>
+        h("a", { class: "pill", href: `#/submissions/${w.submission_id}` }, `${w.level}: ${w.score ?? "—"}/${w.total_questions}`))
+    : h("span", { class: "muted" }, "—");
+  app.replaceChildren(
+    h("p", {}, h("a", { href: "#/schools" }, "← Schools")),
+    h("h1", {}, data.school.school_name || data.school.school_code, " ", h("span", { class: "muted" }, `(${data.school.school_code})`)),
+    h("div", { class: "card" }, h("div", { class: "table-wrap" }, h("table", {},
+      h("thead", {}, h("tr", {}, ["Student", "Roll no.", "Current level", "Last submitted", "Recent worksheets"].map((t) => h("th", {}, t)))),
+      h("tbody", {}, data.students.length ? data.students.map((s) =>
+        h("tr", {},
+          h("td", {}, s.student_name),
+          h("td", {}, s.student_id),
+          h("td", {}, s.current_level || "—"),
+          h("td", {}, s.last_submitted_at ? fmtDate(s.last_submitted_at) : h("span", { class: "muted" }, "Never")),
+          h("td", { class: "chips" }, worksheetChips(s)))) : [emptyRow(5, "No students at this school.")])))));
+}
+
 // ---------- router ----------
 async function route() {
   clearInterval(refreshTimer);
@@ -527,6 +562,8 @@ async function route() {
     else if (parts[0] === "submissions") await submissionsView(params);
     else if (parts[0] === "reviews" && parts[1]) await reviewView(parts[1]);
     else if (parts[0] === "reviews") await reviewsView(params);
+    else if (parts[0] === "schools" && parts[1]) await schoolView(parts[1]);
+    else if (parts[0] === "schools") await schoolsView();
     else app.replaceChildren(h("p", {}, "Page not found. ", h("a", { href: "#/" }, "Go to overview")));
     if (parts.length) { updateBadge(); updateStatus(); }
   } catch (e) {

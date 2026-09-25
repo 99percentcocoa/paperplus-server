@@ -1,16 +1,18 @@
 """Admin dashboard JSON API + generalized /files route, driven through TestClient with the get_session
 dependency pointed at the test's own session (same pattern as test_webhook.py)."""
 
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlmodel import select
+from sqlmodel import delete, select
 
 from app.db.session import get_session
 from app.main import app
-from app.models import ScanReview, Submission
-from tests.conftest import ENV_STUDENT_ID
+from app.models import ScanReview, Submission, Worksheet
+from app.models.core import utcnow
+from tests.conftest import ENV_SCHOOL_CODE, ENV_STUDENT_ID
 
 MARKS = {1: "A", 2: "B", 3: "A", 4: None}  # correct answer is A everywhere -> score 2
 
@@ -149,6 +151,77 @@ def test_files_route_kinds_and_guards(scan_env, client):
     assert client.get("/files/secrets/anything.jpg").status_code == 404  # unknown kind
     assert client.get("/files/checked/missing.jpg").status_code == 404
     assert client.get("/files/checked/..").status_code in (400, 404)
+
+
+def test_school_detail_sorts_never_submitted_first(scan_env, client):
+    never_submitted = scan_env.add_student("9996")
+    scan_env.run_scan(MARKS)  # ENV_STUDENT_ID submits, "9996" doesn't
+
+    resp = client.get(f"/api/admin/schools/{ENV_SCHOOL_CODE}")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["school"] == {"school_code": ENV_SCHOOL_CODE, "school_name": "Corrections Test School"}
+
+    students = body["students"]
+    assert [s["student_id"] for s in students] == [never_submitted.student_id, ENV_STUDENT_ID]
+
+    never = students[0]
+    assert never["last_submitted_at"] is None
+    assert never["recent_worksheets"] == []
+
+    submitted = students[1]
+    assert submitted["last_submitted_at"] is not None
+    assert len(submitted["recent_worksheets"]) == 1
+    entry = submitted["recent_worksheets"][0]
+    assert entry["worksheet_id"] == scan_env.worksheet.worksheet_id
+    assert entry["level"] == "A"
+    assert entry["score"] == 2
+    assert entry["total_questions"] == 4
+
+
+def test_school_detail_returns_only_last_three_worksheets(scan_env, client):
+    extra_worksheets = [
+        Worksheet(worksheet_level=str(i), worksheet_category="practice", lang="en", title=f"Extra {i}")
+        for i in range(4)
+    ]
+    scan_env.session.add_all(extra_worksheets)
+    scan_env.session.commit()
+    for w in extra_worksheets:
+        scan_env.session.refresh(w)
+
+    now = utcnow()
+    extra_submissions = [
+        Submission(
+            student_id=ENV_STUDENT_ID,
+            worksheet_id=w.worksheet_id,
+            worksheet_category="practice",
+            score=idx,
+            answers_json=[],
+            submitted_at=now - timedelta(minutes=idx),
+        )
+        for idx, w in enumerate(extra_worksheets)
+    ]
+    scan_env.session.add_all(extra_submissions)
+    scan_env.session.commit()
+
+    try:
+        resp = client.get(f"/api/admin/schools/{ENV_SCHOOL_CODE}")
+        assert resp.status_code == 200
+        [student] = [s for s in resp.json()["students"] if s["student_id"] == ENV_STUDENT_ID]
+        assert len(student["recent_worksheets"]) == 3
+        # Most recent 3 by submitted_at (minutes=0,1,2), i.e. the first three extra worksheets.
+        expected_ids = [w.worksheet_id for w in extra_worksheets[:3]]
+        assert [entry["worksheet_id"] for entry in student["recent_worksheets"]] == expected_ids
+    finally:
+        submission_ids = [s.submission_id for s in extra_submissions]
+        scan_env.session.exec(delete(Submission).where(Submission.submission_id.in_(submission_ids)))
+        worksheet_ids = [w.worksheet_id for w in extra_worksheets]
+        scan_env.session.exec(delete(Worksheet).where(Worksheet.worksheet_id.in_(worksheet_ids)))
+        scan_env.session.commit()
+
+
+def test_school_detail_404_for_unknown_school(client):
+    assert client.get("/api/admin/schools/DOESNOTEXIST").status_code == 404
 
 
 def test_admin_ui_is_served_with_noindex(client):
