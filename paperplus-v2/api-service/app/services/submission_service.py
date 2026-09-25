@@ -55,6 +55,13 @@ MESSAGES = {
         "This worksheet is not ready to be graded yet. Please contact your facilitator. ⟳ \n"
         "ही कार्यपत्रिका तपासण्यासाठी तयार नाही. कृपया आपल्या शिक्षकांशी संपर्क साधा. ⟳"
     ),
+    # Sent when a message isn't a photo at all (plain text, a sticker, etc.) -- ported from the
+    # old system's message_service.py "Handle non-image messages" branch. Doesn't go through
+    # handle_incoming_image (there's no image to process), so webhook.py sends it directly.
+    "non_image_message": (
+        "Please send an image of a scanned worksheet. \n"
+        "कृप्या केवळ कार्यपत्रिकेचा फोटो काढा. ⟳"
+    ),
 }
 
 

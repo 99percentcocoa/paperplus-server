@@ -15,7 +15,7 @@ from sqlmodel import Session
 from app.core.config import settings
 from app.db.session import get_session
 from app.services.communication import CommunicationClient, ExotelCommunicationClient, is_valid_image_message
-from app.services.submission_service import handle_incoming_image
+from app.services.submission_service import MESSAGES, handle_incoming_image
 from app.services.vision_client import HTTPVisionClient, VisionClient
 from shared.logging_config import correlation_id_var
 
@@ -45,6 +45,13 @@ def webhook(
         from_number = message.get("from")
         is_valid, image_url = is_valid_image_message(message)
         if not is_valid or not from_number or not image_url:
+            # Delivery-receipt/status callbacks (callback_type != "incoming_message") are not a
+            # message from a person and must stay silent -- only reply for a genuine incoming
+            # message that isn't a photo (text, a sticker, etc.), matching the old system's
+            # "Handle non-image messages" branch.
+            callback_type = message.get("callback_type")
+            if from_number and (not callback_type or callback_type == "incoming_message"):
+                comm_client.send_message(from_number, MESSAGES["non_image_message"])
             continue
 
         correlation_id = str(uuid.uuid4())

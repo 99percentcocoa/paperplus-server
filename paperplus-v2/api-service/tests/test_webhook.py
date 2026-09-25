@@ -98,7 +98,10 @@ def test_webhook_processes_valid_image_message_end_to_end(client: TestClient, se
     _cleanup_scan_reviews(session)
 
 
-def test_webhook_ignores_non_image_messages(client: TestClient, session: Session, comm_client, monkeypatch):
+def test_webhook_replies_to_non_image_messages(client: TestClient, session: Session, comm_client, monkeypatch):
+    """A genuine message from a person that isn't a photo (text, sticker, etc.) must get a reply
+    asking for one -- distinct from a delivery-receipt callback, which must stay silent (see
+    test_webhook_ignores_delivery_receipt_callbacks below)."""
     monkeypatch.setattr("app.routes.webhook.httpx.get", lambda *a, **k: _FakeImageResponse())
 
     payload = {
@@ -111,7 +114,9 @@ def test_webhook_ignores_non_image_messages(client: TestClient, session: Session
     response = client.post("/webhook", json=payload)
 
     assert response.status_code == 200
-    assert comm_client.sent_messages == []
+    assert len(comm_client.sent_messages) == 1
+    assert comm_client.sent_messages[0][0] == "+911234567890"
+    assert "Please send an image" in comm_client.sent_messages[0][1]
 
 
 def test_webhook_ignores_delivery_receipt_callbacks(client: TestClient, session: Session, comm_client, monkeypatch):
