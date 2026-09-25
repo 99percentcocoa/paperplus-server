@@ -40,20 +40,20 @@ logger = logging.getLogger(__name__)
 
 MESSAGES = {
     "vision_failed": (
-        "The worksheet could not be read properly. Please try again. \u27f3 \n"
-        "\u0915\u093e\u0930\u094d\u092f\u092a\u0924\u094d\u0930\u093f\u0915\u093e \u0928\u0940\u091f \u0935\u093e\u091a\u0924\u093e \u0906\u0932\u0940 \u0928\u093e\u0939\u0940. \u0915\u0943\u092a\u092f\u093e \u092a\u0941\u0928\u094d\u0939\u093e \u092a\u094d\u0930\u092f\u0924\u094d\u0928 \u0915\u0930\u093e. \u27f3"
+        "The worksheet could not be read properly. Please try again. ⟳ \n"
+        "आपल्या फोटोमध्ये कार्यपत्रिका नीट दिसली नाही. कृपया पुन्हा प्रयत्न करा किंवा कार्यपत्रिका तुमच्या शिक्षकांना द्या. ⟳"
     ),
     "invalid_student": (
-        "Roll number not recognized. Please check and try again. \u27f3 \n"
-        "\u0930\u094b\u0932 \u0928\u0902\u092c\u0930 \u0913\u0933\u0916\u0924\u093e \u0906\u0932\u093e \u0928\u093e\u0939\u0940. \u0915\u0943\u092a\u092f\u093e \u0924\u092a\u093e\u0938\u0942\u0928 \u092a\u0930\u0924 \u092a\u093e\u0920\u0935\u093e. \u27f3"
+        "Roll number not recognized. Please check and try again. ⟳ \n"
+        "रोल नंबर ओळखता आला नाही. कृपया तपासून परत पाठवा किंवा कार्यपत्रिका तुमच्या शिक्षकांना द्या. ⟳"
     ),
     "invalid_worksheet": (
-        "This worksheet could not be processed. Please try again. \u27f3 \n"
-        "\u0939\u0940 \u0915\u093e\u0930\u094d\u092f\u092a\u0924\u094d\u0930\u093f\u0915\u093e \u0924\u092a\u093e\u0938\u0924\u093e \u0906\u0932\u0940 \u0928\u093e\u0939\u0940. \u0915\u0943\u092a\u092f\u093e \u092a\u0930\u0924 \u092a\u094d\u0930\u092f\u0924\u094d\u0928 \u0915\u0930\u093e. \u27f3"
+        "This worksheet could not be processed. Please try again. ⟳ \n"
+        "ही कार्यपत्रिका तपासता आली नाही. कृपया परत प्रयत्न करा किंवा कार्यपत्रिका तुमच्या शिक्षकांना द्या. ⟳"
     ),
     "invalid_answer_key": (
-        "This worksheet is not ready to be graded yet. Please contact your facilitator. \u27f3 \n"
-        "\u0939\u0940 \u0915\u093e\u0930\u094d\u092f\u092a\u0924\u094d\u0930\u093f\u0915\u093e \u0924\u092a\u093e\u0938\u0923\u094d\u092f\u093e\u0938\u093e\u0920\u0940 \u0924\u092f\u093e\u0930 \u0928\u093e\u0939\u0940. \u0915\u0943\u092a\u092f\u093e \u0906\u092a\u0932\u094d\u092f\u093e \u0938\u0939\u0935\u093e\u092f\u0915\u093e\u0936\u0940 \u0938\u0902\u092a\u0930\u094d\u0915 \u0938\u093e\u0927\u093e. \u27f3"
+        "This worksheet is not ready to be graded yet. Please contact your facilitator. ⟳ \n"
+        "ही कार्यपत्रिका तपासण्यासाठी तयार नाही. कृपया आपल्या शिक्षकांशी संपर्क साधा. ⟳"
     ),
 }
 
