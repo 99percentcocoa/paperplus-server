@@ -404,12 +404,15 @@ async function reviewView(id, overrides = {}, keep = {}) {
 
   if (!data.resolvable) {
     const alreadyDone = data.status === "corrected" || data.status === "approved";
+    const triedWorksheetId = overrides.worksheet_id;
     const note = alreadyDone
       ? h("p", {}, "This entry is already ", data.status, ".", data.submission_id ? [" ", h("a", { href: `#/submissions/${data.submission_id}` }, "View submission →")] : null)
-      : h("div", { class: "notice" }, "There's no stored scan result to grade from — the tags on the page couldn't be read, or the roll number came back unreadable, so vision-service couldn't return any marks. If you know which worksheet this is, enter its ID and retry: the same photo is re-sent, and it can often still be graded even though the scan on its own couldn't tell.");
+      : triedWorksheetId
+      ? h("div", { class: "notice error" }, `Worksheet ${triedWorksheetId} doesn't exist. Check the ID and try again.`)
+      : h("div", { class: "notice" }, "The tags on the page couldn't be read, or the roll number came back unreadable, so vision-service couldn't return any marks. If you know which worksheet this is, you can retry (re-sends the same photo — often still works even though the scan on its own couldn't tell), or skip straight to grading it by hand while looking at the photo on the left.");
     let retrySection = null;
     if (!alreadyDone && data.scan) {
-      const retryInput = h("input", { type: "number", value: data.worksheet?.worksheet_id ?? "", placeholder: "worksheet id" });
+      const retryInput = h("input", { type: "number", value: triedWorksheetId ?? data.worksheet?.worksheet_id ?? "", placeholder: "worksheet id" });
       const retryBtn = h("button", { class: "primary" }, "Retry with this worksheet ID");
       retryBtn.addEventListener("click", async () => {
         const worksheet_id = parseInt(retryInput.value, 10);
@@ -424,9 +427,18 @@ async function reviewView(id, overrides = {}, keep = {}) {
           retryBtn.disabled = false;
         }
       });
-      retrySection = h("div", { class: "fields" }, h("label", {}, "Worksheet ID", retryInput), h("label", {}, " ", retryBtn));
+      const manualBtn = h("button", {}, "Skip retry — grade manually");
+      manualBtn.addEventListener("click", () => {
+        const worksheet_id = parseInt(retryInput.value, 10);
+        if (!worksheet_id) { toast("Enter a worksheet ID first.", true); return; }
+        reviewView(id, { worksheet_id }).catch((e) => toast(e.message, true));
+      });
+      retrySection = h("div", { class: "fields" },
+        h("label", {}, "Worksheet ID", retryInput),
+        h("label", {}, " ", retryBtn),
+        h("label", {}, " ", manualBtn));
     } else if (!alreadyDone) {
-      retrySection = h("p", { class: "muted" }, "No photo was even stored for this scan, so there's nothing to retry — ask the student to resend it.");
+      retrySection = h("p", { class: "muted" }, "No photo was even stored for this scan, so there's nothing to retry or grade — ask the student to resend it.");
     }
     app.replaceChildren(...header, h("div", { class: "split" }, viewer,
       h("div", { class: "card" }, note, retrySection,
@@ -468,6 +480,7 @@ async function reviewView(id, overrides = {}, keep = {}) {
   const warnings = [
     data.worksheet_missing ? h("div", { class: "notice error" }, "That worksheet doesn't exist in the database. Enter the right worksheet ID and reload the preview.") : null,
     data.answer_key_missing ? h("div", { class: "notice error" }, "No answer key found for this worksheet/code. Enter the question paper code (OMR) or seed an answer key, then reload.") : null,
+    data.manual_entry ? h("div", { class: "notice" }, "No vision result for this scan — every question below starts blank. Look at the photo on the left and pick each answer by hand.") : null,
   ];
 
   const counter = h("span", { class: "muted" });

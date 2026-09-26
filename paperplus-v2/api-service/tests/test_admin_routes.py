@@ -166,6 +166,36 @@ def test_retry_recovers_marks_for_a_scan_with_no_vision_result(scan_env, client)
     ).status_code == 400  # already resolved
 
 
+def test_manual_grading_when_no_vision_result_and_no_retry(scan_env, client):
+    """Covers grading straight from the photo with no vision-service help at all -- neither the
+    corner/row tags nor a retry are required once the admin knows the worksheet and can see the
+    image: every question starts blank and the admin fills each one in by hand."""
+    correlation_id = scan_env.run_failed_scan()
+    scan = scan_env.session.exec(select(Scan).where(Scan.correlation_id == correlation_id)).one()
+    review = scan_env.session.exec(select(ScanReview).where(ScanReview.scan_id == scan.id)).one()
+
+    bad_worksheet = client.get(f"/api/admin/reviews/{review.review_id}", params={"worksheet_id": 999999999})
+    assert bad_worksheet.json()["worksheet_missing"] is True and bad_worksheet.json()["resolvable"] is False
+
+    detail = client.get(
+        f"/api/admin/reviews/{review.review_id}", params={"worksheet_id": scan_env.worksheet.worksheet_id}
+    ).json()
+    assert detail["resolvable"] is True and detail["manual_entry"] is True
+    assert [q["detected_option"] for q in detail["questions"]] == ["", "", "", ""]
+    assert [q["question_index"] for q in detail["questions"]] == [1, 2, 3, 4]
+
+    resolved = client.post(
+        f"/api/admin/reviews/{review.review_id}/resolve",
+        json={
+            "student_id": ENV_STUDENT_ID,
+            "corrected_by": "Asha",
+            "worksheet_id": scan_env.worksheet.worksheet_id,
+            "corrections": [{"question_index": i, "selected_option": "A"} for i in (1, 2, 3, 4)],
+        },
+    )
+    assert resolved.status_code == 200 and resolved.json()["score"] == 4
+
+
 def test_review_status_and_unknown_review(scan_env, client):
     scan_env.run_scan(MARKS, roll_number="0000")
     review = scan_env.session.exec(select(ScanReview).where(ScanReview.detected_roll_number == "0000")).one()

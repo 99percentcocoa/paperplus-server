@@ -296,13 +296,20 @@ def list_reviews(
                 "status": r.status,
                 "detected_roll_number": r.detected_roll_number,
                 "student_id": r.student_id,
-                "worksheet_id": r.worksheet_id or (scans[r.scan_id].worksheet_id if r.scan_id in scans else None),
+                "worksheet_id": (worksheet_id := r.worksheet_id or (scans[r.scan_id].worksheet_id if r.scan_id in scans else None)),
                 "error_reason": r.error_reason,
                 "created_at": _iso(r.created_at),
                 "submission_id": r.submission_id,
                 "from_number": scans[r.scan_id].from_number if r.scan_id in scans else None,
                 "has_image": r.scan_id in scans,
-                "resolvable": bool(r.scan_id in scans and (scans[r.scan_id].vision_result or {}).get("question_marks")),
+                # Resolvable straight from this list either with real marks, or -- once a worksheet
+                # is known (e.g. after a retry, or an earlier scan of the same worksheet decoded it
+                # fine) -- by manually grading from the photo; see review_detail for the full logic.
+                "resolvable": bool(
+                    r.scan_id in scans and (
+                        (scans[r.scan_id].vision_result or {}).get("question_marks") or worksheet_id is not None
+                    )
+                ),
             }
             for r in reviews
         ],
@@ -331,6 +338,38 @@ def review_detail(
     answer_key = resolve_answer_key(session, worksheet.worksheet_id, code) if worksheet else {}
     details = _question_details(session, worksheet.worksheet_id) if worksheet else {}
 
+    if marks:
+        questions = [
+            {
+                "question_index": m["question_index"],
+                "detected_option": m.get("marked_option") or "",
+                "confidence": m.get("confidence"),
+                "correct_option": answer_key.get(m["question_index"]),
+                "question_text": details.get(m["question_index"], {}).get("question_text"),
+                "options": details.get(m["question_index"], {}).get("options"),
+                "labels": details.get(m["question_index"], {}).get("labels", ["A", "B", "C", "D"]),
+            }
+            for m in marks
+        ]
+    elif worksheet is not None:
+        # No vision result (tags weren't detected) -- an admin who can see the photo can still
+        # grade it by hand once they've told us which worksheet it is, so offer every question on
+        # that worksheet blank rather than nothing at all.
+        questions = [
+            {
+                "question_index": index,
+                "detected_option": "",
+                "confidence": None,
+                "correct_option": answer_key.get(index),
+                "question_text": detail.get("question_text"),
+                "options": detail.get("options"),
+                "labels": detail.get("labels", ["A", "B", "C", "D"]),
+            }
+            for index, detail in sorted(details.items())
+        ]
+    else:
+        questions = []
+
     return {
         "review_id": review.review_id,
         "status": review.status,
@@ -357,19 +396,9 @@ def review_detail(
         },
         "worksheet_missing": worksheet is None,
         "answer_key_missing": worksheet is not None and not answer_key,
-        "resolvable": bool(marks) and review.status in OPEN_REVIEW_STATUSES,
-        "questions": [
-            {
-                "question_index": m["question_index"],
-                "detected_option": m.get("marked_option") or "",
-                "confidence": m.get("confidence"),
-                "correct_option": answer_key.get(m["question_index"]),
-                "question_text": details.get(m["question_index"], {}).get("question_text"),
-                "options": details.get(m["question_index"], {}).get("options"),
-                "labels": details.get(m["question_index"], {}).get("labels", ["A", "B", "C", "D"]),
-            }
-            for m in marks
-        ],
+        "manual_entry": not marks and worksheet is not None,
+        "resolvable": scan is not None and bool(questions) and review.status in OPEN_REVIEW_STATUSES,
+        "questions": questions,
     }
 
 

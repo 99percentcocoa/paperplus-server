@@ -161,8 +161,9 @@ def test_resolve_review_rejects_correcting_questions_not_on_the_scanned_page(sca
         resolve_review(env.session, review.review_id, ENV_STUDENT_ID, {4: "A"}, "Asha")
 
 
-def test_resolve_review_needs_stored_vision_result(scan_env):
-    """A scan where vision-service itself failed has nothing to grade from -- it can only be dismissed."""
+def test_resolve_review_without_vision_result_needs_a_worksheet_id(scan_env):
+    """A scan where vision-service itself failed has no marks and no decoded worksheet: it can be
+    graded by hand only once the admin supplies the worksheet_id; otherwise it can just be dismissed."""
     from app.services.submission_service import handle_incoming_image
 
     env = scan_env
@@ -173,7 +174,7 @@ def test_resolve_review_needs_stored_vision_result(scan_env):
     assert review.scan_id is not None
     assert env.session.get(Scan, review.scan_id).vision_result is None
 
-    with pytest.raises(CorrectionError, match="no stored vision result"):
+    with pytest.raises(CorrectionError, match="supply the worksheet_id"):
         resolve_review(env.session, review.review_id, ENV_STUDENT_ID, {}, "Asha")
 
     dismissed = set_review_status(env.session, review.review_id, "approved", "Asha")

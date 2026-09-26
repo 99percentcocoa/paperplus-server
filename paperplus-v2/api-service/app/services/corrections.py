@@ -221,17 +221,19 @@ def resolve_review(
         raise CorrectionError(f"Review {review_id} is already {review.status}.")
 
     scan = session.get(Scan, review.scan_id) if review.scan_id else None
-    if scan is None or not scan.vision_result or not scan.vision_result.get("question_marks"):
+    if scan is None:
         raise CorrectionError(
-            "This scan has no stored vision result (vision-service failed), so there is nothing to "
-            "grade. Ask the student to resend it, and dismiss this entry."
+            "This review has no stored photo, so there is nothing to grade from or look at. "
+            "Ask the student to resend it, and dismiss this entry."
         )
 
     student = session.get(Student, student_id)
     if student is None:
         raise CorrectionError(f"Student '{student_id}' does not exist.")
     target_worksheet_id = worksheet_id or scan.worksheet_id
-    worksheet = session.get(Worksheet, target_worksheet_id) if target_worksheet_id is not None else None
+    if target_worksheet_id is None:
+        raise CorrectionError("This scan couldn't identify its worksheet; supply the worksheet_id.")
+    worksheet = session.get(Worksheet, target_worksheet_id)
     if worksheet is None:
         raise CorrectionError(f"Worksheet '{target_worksheet_id}' does not exist; supply the right worksheet_id.")
 
@@ -242,8 +244,19 @@ def resolve_review(
             f"No answer key resolvable for worksheet {worksheet.worksheet_id} (question_paper_code={code!r})."
         )
 
-    marks = [QuestionMark(**m) for m in scan.vision_result["question_marks"]]
-    graded, _ = grade_marks(marks, answer_key)
+    has_marks = bool(scan.vision_result and scan.vision_result.get("question_marks"))
+    if has_marks:
+        marks = [QuestionMark(**m) for m in scan.vision_result["question_marks"]]
+        graded, _ = grade_marks(marks, answer_key)
+    else:
+        # No usable vision result at all (corner/row tags undetected) -- an admin who can see the
+        # photo and knows the worksheet doesn't need vision-service's geometry to grade it: start
+        # every question on the worksheet unanswered and let `corrections` (all manually entered
+        # by looking at the image) fill in each one, same as the marks-driven path below would.
+        questions = session.exec(
+            select(Question).where(Question.worksheet_id == worksheet.worksheet_id, Question.index.is_not(None))
+        ).all()
+        graded = [_apply_to_answer(answer_key, q.index, "") for q in sorted(questions, key=lambda q: q.index)]
     original_page = copy.deepcopy(graded)
     original_page_score = sum(1 for a in original_page if a["is_correct"])
 
