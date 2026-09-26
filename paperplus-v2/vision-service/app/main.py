@@ -13,7 +13,7 @@ from fastapi import FastAPI, Header, HTTPException
 
 from app.core.config import settings
 from app.vision.bubble_inference import BubbleClassifier
-from app.vision.errors import CornerTagDetectionError, RollNumberError, RowTagDetectionError
+from app.vision.errors import CornerTagDetectionError, RowTagDetectionError
 from app.vision.ocr import PaddleOCRProvider
 from app.vision.pipeline import process_scan
 from shared.contracts import ProcessingResult, ProcessRequest, QuestionMark
@@ -67,7 +67,7 @@ def process(request: ProcessRequest, x_service_secret: str | None = Header(defau
             ocr_provider=app.state.ocr_provider,
             template_hint=request.template_hint,
         )
-    except (CornerTagDetectionError, RowTagDetectionError, RollNumberError) as exc:
+    except (CornerTagDetectionError, RowTagDetectionError) as exc:
         logger.warning("Scan processing failed: %s", exc)
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 

@@ -18,10 +18,21 @@ from sqlmodel import Session, select
 
 from app.core.config import settings
 from app.domain.annotation import draw_checked_image
+from app.domain.errors import VisionClientError
 from app.domain.grading import grade_marks, resolve_answer_key
 from app.domain.mastery import evaluate_and_update_level, recalculate_skill_mastery
 from app.domain.submission_merge import resolve_page_range
-from app.models import Attempt, Question, QuestionOption, Scan, ScanReview, Student, Submission, Worksheet
+from app.models import (
+    Attempt,
+    Question,
+    QuestionOption,
+    Scan,
+    ScanReview,
+    Student,
+    Submission,
+    Worksheet,
+    WorksheetTemplate,
+)
 from app.models.submission import ScanOutcome, ScanReviewStatus
 from app.routes.files import checked_image_url
 from app.services.submission_service import (
@@ -30,6 +41,7 @@ from app.services.submission_service import (
     insert_attempts,
     persist_graded_scan,
 )
+from app.services.vision_client import VisionClient
 from shared.contracts import QuestionMark
 
 logger = logging.getLogger(__name__)
@@ -291,6 +303,62 @@ def resolve_review(
     )
     session.refresh(submission)
     return submission
+
+
+def retry_scan(session: Session, vision_client: VisionClient, review_id: int, worksheet_id: int) -> Scan:
+    """Re-sends a failed scan's original photo to vision-service, telling it which worksheet this
+    is so it can be graded even though the scan itself couldn't establish that on its own -- e.g.
+    the row tags that carry worksheet_id were unreadable (torn/smudged/glare) even though the rest
+    of the page's tags were fine. Used for both "tags not detected" and "roll number invalid"
+    failures: neither has any question_marks stored yet (vision-service raised before computing
+    them), so there's nothing for the dashboard's correction UI to show until this succeeds.
+
+    template_hint is derived from the admin-supplied worksheet (not guessed from the scan, which
+    is exactly what's unreliable here) so vision-service can still infer the right ROI layout even
+    if the row tags remain undecodable this time round.
+
+    Does not touch review.status or grade anything -- a successful retry only recovers
+    question_marks onto the scan; resolve_review still needs to run afterwards to pick a student
+    and turn it into a Submission, same as any other open review.
+    """
+    review = session.get(ScanReview, review_id)
+    if review is None:
+        raise NotFoundError(f"Review {review_id} not found.")
+    if review.status not in (ScanReviewStatus.FAILED.value, ScanReviewStatus.NEEDS_REVIEW.value):
+        raise CorrectionError(f"Review {review_id} is already {review.status}; nothing to retry.")
+
+    scan = session.get(Scan, review.scan_id) if review.scan_id else None
+    if scan is None or not scan.upload_path:
+        raise CorrectionError("This review has no stored photo to retry.")
+
+    worksheet = session.get(Worksheet, worksheet_id)
+    if worksheet is None:
+        raise CorrectionError(f"Worksheet '{worksheet_id}' does not exist.")
+    template = session.get(WorksheetTemplate, worksheet.template_id) if worksheet.template_id else None
+
+    try:
+        result = vision_client.process(scan.upload_path, scan.correlation_id, template_hint=template.name if template else None)
+    except VisionClientError as exc:
+        raise CorrectionError(
+            f"vision-service still could not process this image: {exc}. A clearer photo is likely needed."
+        ) from exc
+
+    scan.worksheet_id = worksheet.worksheet_id
+    scan.page_no = result.page_no
+    scan.template_name = result.template_name
+    scan.roll_number = result.roll_number
+    scan.question_paper_code = result.question_paper_code
+    scan.vision_result = result.model_dump()
+    scan.dewarped_path = result.dewarped_image_path
+    session.add(scan)
+
+    review.worksheet_id = worksheet.worksheet_id
+    review.detected_roll_number = result.roll_number or review.detected_roll_number
+    review.updated_at = _utcnow()
+    session.add(review)
+    session.commit()
+    session.refresh(scan)
+    return scan
 
 
 def set_review_status(session: Session, review_id: int, status: str, corrected_by: str | None = None) -> ScanReview:

@@ -10,9 +10,12 @@ from sqlmodel import delete, select
 
 from app.db.session import get_session
 from app.main import app
-from app.models import ScanReview, Submission, Worksheet
+from app.models import Scan, ScanReview, Submission, Worksheet
 from app.models.core import utcnow
+from app.routes.admin import get_vision_client
+from shared.contracts import ProcessingResult, QuestionMark
 from tests.conftest import ENV_SCHOOL_CODE, ENV_STUDENT_ID
+from tests.fakes import FakeVisionClient
 
 MARKS = {1: "A", 2: "B", 3: "A", 4: None}  # correct answer is A everywhere -> score 2
 
@@ -115,6 +118,52 @@ def test_failed_scan_appears_in_reviews_and_can_be_resolved(scan_env, client):
         f"/api/admin/reviews/{item['review_id']}/resolve", json={"student_id": ENV_STUDENT_ID, "corrected_by": "Asha"}
     )
     assert again.status_code == 400
+
+
+def test_retry_recovers_marks_for_a_scan_with_no_vision_result(scan_env, client):
+    """Simulates the "tags not detected"/"roll number invalid" failure: vision-service raised
+    entirely, so the review starts with no question_marks to grade from at all. Retrying with an
+    admin-supplied worksheet_id should recover marks and make the review resolvable."""
+    correlation_id = scan_env.run_failed_scan()
+    scan = scan_env.session.exec(select(Scan).where(Scan.correlation_id == correlation_id)).one()
+    review = scan_env.session.exec(select(ScanReview).where(ScanReview.scan_id == scan.id)).one()
+
+    listed = next(r for r in client.get("/api/admin/reviews").json()["items"] if r["review_id"] == review.review_id)
+    assert listed["resolvable"] is False and listed["worksheet_id"] is None
+
+    retry_result = ProcessingResult(
+        worksheet_id=scan_env.worksheet.worksheet_id, page_no=1, first_question_index=1,
+        template_name="regular", roll_number=None, roll_number_confidence=None, question_paper_code="",
+        question_marks=[
+            QuestionMark(question_index=i, marked_option="A", confidence=0.9, roi_x1=0, roi_y1=0, roi_x2=1, roi_y2=1)
+            for i in (1, 2, 3, 4)
+        ],
+    )
+    app.dependency_overrides[get_vision_client] = lambda: FakeVisionClient(retry_result)
+    try:
+        retried = client.post(
+            f"/api/admin/reviews/{review.review_id}/retry", json={"worksheet_id": scan_env.worksheet.worksheet_id}
+        )
+    finally:
+        del app.dependency_overrides[get_vision_client]
+
+    assert retried.status_code == 200
+    body = retried.json()
+    assert body["resolvable"] is True
+    assert body["worksheet"]["worksheet_id"] == scan_env.worksheet.worksheet_id
+    assert [q["detected_option"] for q in body["questions"]] == ["A", "A", "A", "A"]
+
+    resolved = client.post(
+        f"/api/admin/reviews/{review.review_id}/resolve", json={"student_id": ENV_STUDENT_ID, "corrected_by": "Asha"}
+    )
+    assert resolved.status_code == 200 and resolved.json()["score"] == 4
+
+    assert client.post(
+        "/api/admin/reviews/999999999/retry", json={"worksheet_id": scan_env.worksheet.worksheet_id}
+    ).status_code == 404
+    assert client.post(
+        f"/api/admin/reviews/{review.review_id}/retry", json={"worksheet_id": scan_env.worksheet.worksheet_id}
+    ).status_code == 400  # already resolved
 
 
 def test_review_status_and_unknown_review(scan_env, client):

@@ -21,8 +21,13 @@ from app.services import corrections as corrections_service
 from app.services import monitoring as monitoring_service
 from app.services.corrections import CorrectionError, NotFoundError
 from app.services.monitoring import OPEN_REVIEW_STATUSES
+from app.services.vision_client import HTTPVisionClient, VisionClient
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
+
+
+def get_vision_client() -> VisionClient:
+    return HTTPVisionClient()
 
 
 class AnswerCorrection(BaseModel):
@@ -47,6 +52,10 @@ class ResolveReviewRequest(BaseModel):
 class ReviewStatusRequest(BaseModel):
     status: str
     corrected_by: str | None = None
+
+
+class RetryScanRequest(BaseModel):
+    worksheet_id: int
 
 
 def _to_dict(corrections: list[AnswerCorrection]) -> dict[int, str | None]:
@@ -362,6 +371,26 @@ def review_detail(
             for m in marks
         ],
     }
+
+
+@router.post("/reviews/{review_id}/retry")
+def retry_review_scan(
+    review_id: int,
+    body: RetryScanRequest,
+    session: Session = Depends(get_session),
+    vision_client: VisionClient = Depends(get_vision_client),
+) -> dict:
+    """For reviews with no usable scan result yet (tags not detected, or roll number invalid --
+    both currently leave scan.vision_result empty): re-sends the original photo to vision-service
+    with the admin-supplied worksheet_id as a hint, so question_marks can be recovered and the
+    review becomes resolvable through the normal /resolve flow below."""
+    try:
+        corrections_service.retry_scan(session, vision_client, review_id, body.worksheet_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except CorrectionError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return review_detail(review_id, session=session)
 
 
 @router.post("/reviews/{review_id}/resolve")

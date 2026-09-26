@@ -62,7 +62,15 @@ def process_scan(
 
     template_name = infer_template_name_from_row_metadata(row_metadata, template_hint)
 
-    roll_number, roll_number_confidence = _read_roll_number(cropped, template_name, ocr_provider)
+    try:
+        roll_number, roll_number_confidence = _read_roll_number(cropped, template_name, ocr_provider)
+    except RollNumberError:
+        # An illegible/invalid roll number is a data problem, not a geometry one -- the tags that
+        # got us this far already prove the bubbles are locatable, so don't throw away a page's
+        # worth of question_marks just because OCR couldn't read four digits. api-service's
+        # student lookup will fail on the None below and route this scan to the admin dashboard's
+        # failed-scan review, where the marks are still there to grade once a student is picked.
+        roll_number, roll_number_confidence = None, None
     question_paper_code = _read_question_paper_code(cropped, template_name, ocr_provider)
 
     row_centers = [d.center for d in row_detections.sorted_row_detections]

@@ -2,7 +2,6 @@ import numpy as np
 import pytest
 
 from app.vision import pipeline as pipeline_module
-from app.vision.errors import RollNumberError
 from app.vision.tags import worksheet_id_to_rows
 
 
@@ -94,18 +93,25 @@ def test_process_scan_infers_basic_omr_from_omr_v2_row_metadata(monkeypatch, cro
     assert [m.question_index for m in result.question_marks] == [40, 41, 42]
 
 
-def test_process_scan_raises_on_invalid_roll_number(monkeypatch, cropped_image):
+def test_process_scan_keeps_question_marks_when_roll_number_is_invalid(monkeypatch, cropped_image):
+    """An illegible roll number must not discard the page's bubble marks -- the tags that let us
+    get this far already prove the geometry is fine, so this is a data problem for the admin
+    dashboard to resolve (pick the right student), not a reason to fail the whole scan."""
     legacy_rows = worksheet_id_to_rows(1)
     _patch_detection(monkeypatch, cropped_image, legacy_rows, row_centers=[(300, 400)])
 
-    with pytest.raises(RollNumberError):
-        pipeline_module.process_scan(
-            cropped_image,
-            target_width=1240,
-            target_height=1754,
-            bubble_classifier=FakeBubbleClassifier(),
-            ocr_provider=FakeOCRProvider(roll_number="not-a-number"),
-        )
+    result = pipeline_module.process_scan(
+        cropped_image,
+        target_width=1240,
+        target_height=1754,
+        bubble_classifier=FakeBubbleClassifier(),
+        ocr_provider=FakeOCRProvider(roll_number="not-a-number"),
+    )
+
+    assert result.roll_number is None
+    assert result.roll_number_confidence is None
+    assert result.worksheet_id == 1
+    assert [m.question_index for m in result.question_marks] == [1, 2]
 
 
 def test_process_scan_template_hint_overrides_inference(monkeypatch, cropped_image):

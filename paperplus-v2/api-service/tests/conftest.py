@@ -30,7 +30,7 @@ from app.models import (
 from app.models.mastery import MasteryHistory
 from app.services.submission_service import handle_incoming_image
 from shared.contracts import ProcessingResult, QuestionMark
-from tests.fakes import FakeCommunicationClient, FakeVisionClient
+from tests.fakes import FailingFakeVisionClient, FakeCommunicationClient, FakeVisionClient
 
 # WhatsApp numbers and correlation-id prefixes used only by tests.
 TEST_FROM_NUMBERS = ("+911234567890", "+911111111111", "+912222222222", "+910000000099")
@@ -103,6 +103,20 @@ class ScanEnv:
         )
         handle_incoming_image(
             self.session, FakeVisionClient(result), self.comm, ENV_FROM_NUMBER, str(upload), correlation_id
+        )
+        return correlation_id
+
+    def run_failed_scan(self) -> str:
+        """A scan where vision-service raised entirely (tags not detected / roll number invalid,
+        both of which currently leave no question_marks) -- has an upload photo but no vision
+        result, matching what the retry-scan feature needs to recover from."""
+        n = next(self._counter)
+        correlation_id = f"crt-{self.worksheet.worksheet_id}-{n}"
+        upload = self.storage / "uploads" / f"{correlation_id}.jpg"
+        upload.parent.mkdir(parents=True, exist_ok=True)
+        Image.new("RGB", (700, 500), color="white").save(upload)
+        handle_incoming_image(
+            self.session, FailingFakeVisionClient(), self.comm, ENV_FROM_NUMBER, str(upload), correlation_id
         )
         return correlation_id
 

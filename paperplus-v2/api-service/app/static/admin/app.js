@@ -403,12 +403,34 @@ async function reviewView(id, overrides = {}, keep = {}) {
   };
 
   if (!data.resolvable) {
-    const note = data.status === "corrected" || data.status === "approved"
+    const alreadyDone = data.status === "corrected" || data.status === "approved";
+    const note = alreadyDone
       ? h("p", {}, "This entry is already ", data.status, ".", data.submission_id ? [" ", h("a", { href: `#/submissions/${data.submission_id}` }, "View submission →")] : null)
-      : h("div", { class: "notice" }, "There's no stored scan result to grade from (the image couldn't be processed at all). Ask the student to resend a clearer photo, then dismiss this entry.");
+      : h("div", { class: "notice" }, "There's no stored scan result to grade from — the tags on the page couldn't be read, or the roll number came back unreadable, so vision-service couldn't return any marks. If you know which worksheet this is, enter its ID and retry: the same photo is re-sent, and it can often still be graded even though the scan on its own couldn't tell.");
+    let retrySection = null;
+    if (!alreadyDone && data.scan) {
+      const retryInput = h("input", { type: "number", value: data.worksheet?.worksheet_id ?? "", placeholder: "worksheet id" });
+      const retryBtn = h("button", { class: "primary" }, "Retry with this worksheet ID");
+      retryBtn.addEventListener("click", async () => {
+        const worksheet_id = parseInt(retryInput.value, 10);
+        if (!worksheet_id) { toast("Enter a worksheet ID first.", true); return; }
+        retryBtn.disabled = true;
+        try {
+          await api(`/reviews/${id}/retry`, { method: "POST", body: { worksheet_id } });
+          toast("Retried — checking whether marks were recovered.");
+          reviewView(id).catch((e) => toast(e.message, true));
+        } catch (e) {
+          toast(e.message, true);
+          retryBtn.disabled = false;
+        }
+      });
+      retrySection = h("div", { class: "fields" }, h("label", {}, "Worksheet ID", retryInput), h("label", {}, " ", retryBtn));
+    } else if (!alreadyDone) {
+      retrySection = h("p", { class: "muted" }, "No photo was even stored for this scan, so there's nothing to retry — ask the student to resend it.");
+    }
     app.replaceChildren(...header, h("div", { class: "split" }, viewer,
-      h("div", { class: "card" }, note,
-        data.status === "corrected" || data.status === "approved" ? null : h("button", { class: "danger", onclick: dismiss }, "Dismiss"))));
+      h("div", { class: "card" }, note, retrySection,
+        alreadyDone ? null : h("button", { class: "danger", onclick: dismiss }, "Dismiss"))));
     return;
   }
 
