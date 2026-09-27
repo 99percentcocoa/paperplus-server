@@ -6,6 +6,8 @@ api-service's DB. vision-service is stateless and only returns raw marks + confi
 
 from dataclasses import dataclass, field
 
+import cv2
+
 from app.vision.apriltag_detector import detect_apriltags
 from app.vision.bubble_inference import BubbleClassifier, detect_bubble_marks
 from app.vision.dewarp import apply_median_blur, crop_image
@@ -52,9 +54,17 @@ def process_scan(
     bubble_classifier: BubbleClassifier,
     ocr_provider: OCRProvider,
     template_hint: str | None = None,
+    skip_corner_tags: bool = False,
+    roll_number_override: str | None = None,
+    question_paper_code_override: str | None = None,
 ) -> ScanResult:
-    corner_detections = detect_apriltags(image_array, "36h11")
-    cropped = crop_image(image_array, corner_detections, target_width, target_height)
+    if skip_corner_tags:
+        # A person has looked at the photo and vouched for it, so don't demand four readable corner
+        # tags: treat the photo as an already-straight page and scale it to the canonical size.
+        cropped = cv2.resize(image_array, (target_width, target_height))
+    else:
+        corner_detections = detect_apriltags(image_array, "36h11")
+        cropped = crop_image(image_array, corner_detections, target_width, target_height)
     blurred = apply_median_blur(cropped)
 
     row_detections = detect_apriltags(cropped, "25h9")
@@ -63,7 +73,10 @@ def process_scan(
     template_name = infer_template_name_from_row_metadata(row_metadata, template_hint)
 
     try:
-        roll_number, roll_number_confidence = _read_roll_number(cropped, template_name, ocr_provider)
+        if roll_number_override:
+            roll_number, roll_number_confidence = roll_number_override, None
+        else:
+            roll_number, roll_number_confidence = _read_roll_number(cropped, template_name, ocr_provider)
     except RollNumberError:
         # An illegible/invalid roll number is a data problem, not a geometry one -- the tags that
         # got us this far already prove the bubbles are locatable, so don't throw away a page's
@@ -71,7 +84,10 @@ def process_scan(
         # student lookup will fail on the None below and route this scan to the admin dashboard's
         # failed-scan review, where the marks are still there to grade once a student is picked.
         roll_number, roll_number_confidence = None, None
-    question_paper_code = _read_question_paper_code(cropped, template_name, ocr_provider)
+    if question_paper_code_override is not None:
+        question_paper_code = validate_question_paper_code(question_paper_code_override)
+    else:
+        question_paper_code = _read_question_paper_code(cropped, template_name, ocr_provider)
 
     row_centers = [d.center for d in row_detections.sorted_row_detections]
     question_rois = get_roi_coordinates(row_centers, template_name)

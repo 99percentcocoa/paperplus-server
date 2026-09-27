@@ -75,7 +75,9 @@ def test_sends_the_photo_as_base64_and_never_a_path(monkeypatch, storage, upload
     request = sent[0]
     assert request["url"] == "http://vision:8100/process"
     assert request["headers"] == {"x-service-secret": "s3cret"}
-    assert set(request["json"]) == {"correlation_id", "image_b64", "template_hint"}  # no image_path
+    assert set(request["json"]) == {
+        "correlation_id", "image_b64", "template_hint", "skip_corner_tags", "roll_number", "question_paper_code",
+    }  # no image_path
     assert base64.b64decode(request["json"]["image_b64"]) == upload.read_bytes()
     assert request["json"]["template_hint"] == "basic_omr"
 

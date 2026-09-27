@@ -309,3 +309,34 @@ def test_admin_ui_is_served_with_noindex(client):
     assert page.headers["x-robots-tag"] == "noindex, nofollow"
     assert client.get("/admin/app.js").status_code == 200
     assert client.get("/admin", follow_redirects=False).status_code in (301, 307)
+
+
+def test_retry_passes_admin_entered_fields_to_vision_and_skips_corner_tags(scan_env, client):
+    correlation_id = scan_env.run_failed_scan()
+    scan = scan_env.session.exec(select(Scan).where(Scan.correlation_id == correlation_id)).one()
+    review = scan_env.session.exec(select(ScanReview).where(ScanReview.scan_id == scan.id)).one()
+
+    seen = {}
+    result = ProcessingResult(
+        worksheet_id=None, page_no=None, first_question_index=None, template_name="regular",
+        roll_number=ENV_STUDENT_ID, roll_number_confidence=None, question_paper_code="D", question_marks=[],
+    )
+
+    class RecordingVisionClient:
+        def process(self, image_path, correlation_id, template_hint=None, skip_corner_tags=False,
+                    roll_number=None, question_paper_code=None):
+            seen.update(skip_corner_tags=skip_corner_tags, roll_number=roll_number, question_paper_code=question_paper_code)
+            return result
+
+    app.dependency_overrides[get_vision_client] = lambda: RecordingVisionClient()
+    try:
+        response = client.post(
+            f"/api/admin/reviews/{review.review_id}/retry",
+            json={"worksheet_id": scan_env.worksheet.worksheet_id, "roll_number": f" {ENV_STUDENT_ID} ", "question_paper_code": "d"},
+        )
+    finally:
+        del app.dependency_overrides[get_vision_client]
+
+    assert response.status_code == 200
+    assert seen == {"skip_corner_tags": True, "roll_number": ENV_STUDENT_ID, "question_paper_code": "D"}
+    assert response.json()["detected_roll_number"] == ENV_STUDENT_ID

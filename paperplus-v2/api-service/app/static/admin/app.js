@@ -409,17 +409,24 @@ async function reviewView(id, overrides = {}, keep = {}) {
       ? h("p", {}, "This entry is already ", data.status, ".", data.submission_id ? [" ", h("a", { href: `#/submissions/${data.submission_id}` }, "View submission →")] : null)
       : triedWorksheetId
       ? h("div", { class: "notice error" }, `Worksheet ${triedWorksheetId} doesn't exist. Check the ID and try again.`)
-      : h("div", { class: "notice" }, "The tags on the page couldn't be read, or the roll number came back unreadable, so vision-service couldn't return any marks. If you know which worksheet this is, you can retry (re-sends the same photo — often still works even though the scan on its own couldn't tell), or skip straight to grading it by hand while looking at the photo on the left.");
+      : h("div", { class: "notice" }, "The tags on the page couldn't be read, or the roll number came back unreadable, so vision-service couldn't return any marks. Enter what you can read off the photo — worksheet ID, roll number, and the paper code if it has one. Retry re-sends the same photo, skipping the corner-tag check and the handwriting OCR you've filled in; or skip straight to grading it by hand while looking at the photo on the left.");
     let retrySection = null;
     if (!alreadyDone && data.scan) {
       const retryInput = h("input", { type: "number", value: triedWorksheetId ?? data.worksheet?.worksheet_id ?? "", placeholder: "worksheet id" });
-      const retryBtn = h("button", { class: "primary" }, "Retry with this worksheet ID");
-      retryBtn.addEventListener("click", async () => {
+      const rollInput = h("input", { value: data.detected_roll_number ?? "", placeholder: "4 digits", maxlength: 4, size: 6 });
+      const codeInput = h("input", { value: overrides.question_paper_code ?? "", placeholder: "A–F (OMR only)", maxlength: 1, size: 6 });
+      const entered = () => {
         const worksheet_id = parseInt(retryInput.value, 10);
-        if (!worksheet_id) { toast("Enter a worksheet ID first.", true); return; }
+        if (!worksheet_id) { toast("Enter a worksheet ID first.", true); return null; }
+        return { worksheet_id, roll_number: rollInput.value.trim(), question_paper_code: codeInput.value.trim().toUpperCase() };
+      };
+      const retryBtn = h("button", { class: "primary" }, "Retry with these details");
+      retryBtn.addEventListener("click", async () => {
+        const body = entered();
+        if (!body) return;
         retryBtn.disabled = true;
         try {
-          await api(`/reviews/${id}/retry`, { method: "POST", body: { worksheet_id } });
+          await api(`/reviews/${id}/retry`, { method: "POST", body });
           toast("Retried — checking whether marks were recovered.");
           reviewView(id).catch((e) => toast(e.message, true));
         } catch (e) {
@@ -429,12 +436,15 @@ async function reviewView(id, overrides = {}, keep = {}) {
       });
       const manualBtn = h("button", {}, "Skip retry — grade manually");
       manualBtn.addEventListener("click", () => {
-        const worksheet_id = parseInt(retryInput.value, 10);
-        if (!worksheet_id) { toast("Enter a worksheet ID first.", true); return; }
-        reviewView(id, { worksheet_id }).catch((e) => toast(e.message, true));
+        const body = entered();
+        if (!body) return;
+        reviewView(id, { worksheet_id: body.worksheet_id, question_paper_code: body.question_paper_code }, { search: body.roll_number, roll: body.roll_number })
+          .catch((e) => toast(e.message, true));
       });
       retrySection = h("div", { class: "fields" },
         h("label", {}, "Worksheet ID", retryInput),
+        h("label", {}, "Roll number", rollInput),
+        h("label", {}, "Question paper code", codeInput),
         h("label", {}, " ", retryBtn),
         h("label", {}, " ", manualBtn));
     } else if (!alreadyDone) {
@@ -465,8 +475,9 @@ async function reviewView(id, overrides = {}, keep = {}) {
       return btn;
     }));
     if (!results.length) studentBox.replaceChildren(h("span", { class: "muted" }, "No matching students. Add the student first (see docs), then search again."));
-    if (!state.student && data.detected_roll_number) {
-      const exact = results.find((s) => s.student_id === data.detected_roll_number);
+    const knownRoll = keep.roll || data.detected_roll_number;
+    if (!state.student && knownRoll) {
+      const exact = results.find((s) => s.student_id === knownRoll);
       if (exact) { state.student = exact; paintStudent(); studentBox.querySelectorAll("button").forEach((b) => { if (b.textContent.startsWith(exact.student_id)) b.classList.add("picked"); }); }
     }
   };

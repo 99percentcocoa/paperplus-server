@@ -14,6 +14,13 @@ class ProcessRequest(BaseModel):
     correlation_id: str
     image_b64: str  # the uploaded photo (JPEG/PNG bytes), base64-encoded
     template_hint: str | None = None
+    # Admin-assisted retry: skip corner-tag (36h11) detection and perspective dewarp, and just
+    # resize the photo to the canonical page size before row-tag decoding and everything after.
+    skip_corner_tags: bool = False
+    # Handwritten fields entered by an admin who can see the photo: when given, OCR for that field
+    # is skipped and the value is used as-is.
+    roll_number: str | None = None
+    question_paper_code: str | None = None
 
 
 class QuestionMark(BaseModel):

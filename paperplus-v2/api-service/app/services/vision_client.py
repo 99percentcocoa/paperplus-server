@@ -18,7 +18,9 @@ logger = logging.getLogger(__name__)
 
 
 class VisionClient(Protocol):
-    def process(self, image_path: str, correlation_id: str, template_hint: str | None = None) -> ProcessingResult: ...
+    def process(self, image_path: str, correlation_id: str, template_hint: str | None = None, skip_corner_tags: bool = False,
+        roll_number: str | None = None, question_paper_code: str | None = None,
+    ) -> ProcessingResult: ...
 
 
 class HTTPVisionClient:
@@ -29,7 +31,9 @@ class HTTPVisionClient:
         self._shared_secret = shared_secret or settings.vision_service_shared_secret
         self._timeout = timeout
 
-    def process(self, image_path: str, correlation_id: str, template_hint: str | None = None) -> ProcessingResult:
+    def process(self, image_path: str, correlation_id: str, template_hint: str | None = None, skip_corner_tags: bool = False,
+        roll_number: str | None = None, question_paper_code: str | None = None,
+    ) -> ProcessingResult:
         """image_path is a file on *this* service's disk (the stored upload). vision-service never
         sees a path: the photo travels as base64 and the dewarped page comes back the same way, then
         gets stored locally and exposed as result.dewarped_image_path."""
@@ -38,7 +42,10 @@ class HTTPVisionClient:
         except OSError as exc:
             raise VisionClientError(f"could not read upload for vision-service: {type(exc).__name__}") from exc
 
-        request = ProcessRequest(correlation_id=correlation_id, image_b64=image_b64, template_hint=template_hint)
+        request = ProcessRequest(
+            correlation_id=correlation_id, image_b64=image_b64, template_hint=template_hint,
+            skip_corner_tags=skip_corner_tags, roll_number=roll_number, question_paper_code=question_paper_code,
+        )
         try:
             response = httpx.post(
                 f"{self._base_url}/process",

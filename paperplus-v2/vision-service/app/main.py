@@ -66,6 +66,9 @@ def process(request: ProcessRequest, x_service_secret: str | None = Header(defau
             bubble_classifier=app.state.bubble_classifier,
             ocr_provider=app.state.ocr_provider,
             template_hint=request.template_hint,
+            skip_corner_tags=request.skip_corner_tags,
+            roll_number_override=request.roll_number,
+            question_paper_code_override=request.question_paper_code,
         )
     except (CornerTagDetectionError, RowTagDetectionError) as exc:
         logger.warning("Scan processing failed: %s", exc)

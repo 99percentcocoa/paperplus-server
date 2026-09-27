@@ -128,3 +128,55 @@ def test_process_scan_template_hint_overrides_inference(monkeypatch, cropped_ima
     )
 
     assert result.template_name == "basic_omr"
+
+
+def test_process_scan_skip_corner_tags_never_touches_corner_detection(monkeypatch, cropped_image):
+    """With an admin vouching for the photo, corner (36h11) detection and dewarp are bypassed
+    entirely -- row-tag decoding and everything after still run on the resized photo."""
+    legacy_rows = worksheet_id_to_rows(42)
+    _patch_detection(monkeypatch, cropped_image, legacy_rows, row_centers=[(300, 400)])
+
+    def no_corners(image_array, tag_family):
+        assert tag_family == "25h9", "corner tags must not be detected when skipped"
+        return FakeDetectionResult(
+            tag_ids=legacy_rows, sorted_row_detections=[FakeDetection(0, (300, 400))]
+        )
+
+    monkeypatch.setattr(pipeline_module, "detect_apriltags", no_corners)
+    monkeypatch.setattr(pipeline_module, "crop_image", lambda *a, **k: pytest.fail("dewarp must be skipped"))
+
+    raw_photo = np.zeros((900, 700, 3), dtype=np.uint8)
+    result = pipeline_module.process_scan(
+        raw_photo,
+        target_width=1240,
+        target_height=1754,
+        bubble_classifier=FakeBubbleClassifier(),
+        ocr_provider=FakeOCRProvider(roll_number="1234"),
+        skip_corner_tags=True,
+    )
+
+    assert result.worksheet_id == 42
+    assert result.dewarped_image_array.shape == (1754, 1240, 3)
+    assert [m.question_index for m in result.question_marks] == [1, 2]
+
+
+def test_process_scan_uses_admin_entered_roll_number_and_paper_code_without_ocr(monkeypatch, cropped_image):
+    legacy_rows = worksheet_id_to_rows(1)
+    _patch_detection(monkeypatch, cropped_image, legacy_rows, row_centers=[(300, 400)])
+
+    class ExplodingOCR:
+        def recognize(self, image_array):
+            raise AssertionError("OCR must not run for fields the admin already entered")
+
+    result = pipeline_module.process_scan(
+        cropped_image,
+        target_width=1240,
+        target_height=1754,
+        bubble_classifier=FakeBubbleClassifier(),
+        ocr_provider=ExplodingOCR(),
+        roll_number_override="0042",
+        question_paper_code_override="d",
+    )
+
+    assert result.roll_number == "0042"
+    assert result.question_paper_code == "D"

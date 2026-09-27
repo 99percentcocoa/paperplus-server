@@ -12,12 +12,12 @@ class FakeVisionClient:
     def __init__(self, result: ProcessingResult):
         self._result = result
 
-    def process(self, image_path, correlation_id, template_hint=None):
+    def process(self, image_path, correlation_id, template_hint=None, skip_corner_tags=False, roll_number=None, question_paper_code=None):
         return self._result
 
 
 class FailingFakeVisionClient:
-    def process(self, image_path, correlation_id, template_hint=None):
+    def process(self, image_path, correlation_id, template_hint=None, skip_corner_tags=False, roll_number=None, question_paper_code=None):
         raise VisionClientError("connection refused")
 
 

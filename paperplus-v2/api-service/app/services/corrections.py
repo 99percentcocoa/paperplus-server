@@ -318,7 +318,14 @@ def resolve_review(
     return submission
 
 
-def retry_scan(session: Session, vision_client: VisionClient, review_id: int, worksheet_id: int) -> Scan:
+def retry_scan(
+    session: Session,
+    vision_client: VisionClient,
+    review_id: int,
+    worksheet_id: int,
+    roll_number: str | None = None,
+    question_paper_code: str | None = None,
+) -> Scan:
     """Re-sends a failed scan's original photo to vision-service, telling it which worksheet this
     is so it can be graded even though the scan itself couldn't establish that on its own -- e.g.
     the row tags that carry worksheet_id were unreadable (torn/smudged/glare) even though the rest
@@ -350,7 +357,11 @@ def retry_scan(session: Session, vision_client: VisionClient, review_id: int, wo
     template = session.get(WorksheetTemplate, worksheet.template_id) if worksheet.template_id else None
 
     try:
-        result = vision_client.process(scan.upload_path, scan.correlation_id, template_hint=template.name if template else None)
+        result = vision_client.process(
+            scan.upload_path, scan.correlation_id,
+            template_hint=template.name if template else None, skip_corner_tags=True,
+            roll_number=roll_number, question_paper_code=question_paper_code,
+        )
     except VisionClientError as exc:
         raise CorrectionError(
             f"vision-service still could not process this image: {exc}. A clearer photo is likely needed."

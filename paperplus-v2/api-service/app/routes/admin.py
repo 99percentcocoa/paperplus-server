@@ -56,6 +56,8 @@ class ReviewStatusRequest(BaseModel):
 
 class RetryScanRequest(BaseModel):
     worksheet_id: int
+    roll_number: str | None = None
+    question_paper_code: str | None = None
 
 
 def _to_dict(corrections: list[AnswerCorrection]) -> dict[int, str | None]:
@@ -414,7 +416,11 @@ def retry_review_scan(
     with the admin-supplied worksheet_id as a hint, so question_marks can be recovered and the
     review becomes resolvable through the normal /resolve flow below."""
     try:
-        corrections_service.retry_scan(session, vision_client, review_id, body.worksheet_id)
+        corrections_service.retry_scan(
+            session, vision_client, review_id, body.worksheet_id,
+            roll_number=(body.roll_number or "").strip() or None,
+            question_paper_code=(body.question_paper_code or "").strip().upper() or None,
+        )
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except CorrectionError as exc:
