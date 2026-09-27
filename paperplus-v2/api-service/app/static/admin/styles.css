@@ -80,3 +80,9 @@ input, select { font: inherit; padding: 6px 8px; border: 1px solid var(--border)
 .toast.error { background: var(--danger); }
 .pager { display: flex; gap: 10px; align-items: center; margin-top: 12px; }
 .empty { color: var(--muted); padding: 14px 10px; }
+
+.chart-card svg.bar-chart { width: 100%; height: auto; display: block; }
+.bar { fill: var(--primary); opacity: 0.85; }
+.bar-current { fill: var(--accent); opacity: 1; }
+.bar-value { font-size: 11px; fill: var(--text); }
+.bar-axis { font-size: 10px; fill: var(--muted); }

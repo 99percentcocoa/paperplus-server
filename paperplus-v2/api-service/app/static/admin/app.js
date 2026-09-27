@@ -596,6 +596,125 @@ async function schoolView(code) {
           h("td", { class: "chips" }, worksheetChips(s)))) : [emptyRow(5, "No students at this school.")])))));
 }
 
+
+// ---------- charts ----------
+const SVG_NS = "http://www.w3.org/2000/svg";
+function svgEl(tag, attrs) {
+  const el = document.createElementNS(SVG_NS, tag);
+  for (const [k, v] of Object.entries(attrs || {})) el.setAttribute(k, v);
+  return el;
+}
+
+const shortWeekLabel = (isoDate) =>
+  new Date(isoDate + "T00:00:00Z").toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" });
+
+/** weeks: the `weeks` array from /metrics/weekly. getValue(week) -> number. Draws a plain inline
+ * SVG bar chart (no library) -- the current, still-accumulating week's bar is visually distinct
+ * and marked "so far" in its tooltip and axis label, so it's never mistaken for a completed week. */
+function barChart(weeks, { getValue, formatValue = (v) => String(v), title }) {
+  const width = 640, height = 220;
+  const padding = { top: 24, right: 12, bottom: 34, left: 12 };
+  const innerW = width - padding.left - padding.right;
+  const innerH = height - padding.top - padding.bottom;
+  const values = weeks.map((w) => getValue(w) ?? 0);
+  const maxVal = Math.max(1, ...values);
+  const gap = 10;
+  const barWidth = Math.max(4, (innerW - gap * (weeks.length - 1)) / weeks.length);
+
+  const svg = svgEl("svg", { viewBox: `0 0 ${width} ${height}`, class: "bar-chart", role: "img", "aria-label": title });
+  weeks.forEach((w, i) => {
+    const value = values[i];
+    const barH = maxVal ? (value / maxVal) * innerH : 0;
+    const x = padding.left + i * (barWidth + gap);
+    const y = padding.top + (innerH - barH);
+
+    const rect = svgEl("rect", {
+      x, y: value > 0 ? y : padding.top + innerH - 2, width: barWidth, height: Math.max(barH, value > 0 ? 2 : 2),
+      rx: 3, class: "bar" + (w.is_current ? " bar-current" : ""),
+    });
+    rect.append(svgEl("title", {}));
+    rect.lastChild.textContent = `${w.week_start} to ${w.week_end}: ${formatValue(value)}${w.is_current ? " (so far)" : ""}`;
+    svg.append(rect);
+
+    const valueLabel = svgEl("text", { x: x + barWidth / 2, y: Math.max(y - 6, 12), "text-anchor": "middle", class: "bar-value" });
+    valueLabel.textContent = formatValue(value);
+    svg.append(valueLabel);
+
+    const axisLabel = svgEl("text", { x: x + barWidth / 2, y: height - padding.bottom + 16, "text-anchor": "middle", class: "bar-axis" });
+    axisLabel.textContent = shortWeekLabel(w.week_start) + (w.is_current ? " (so far)" : "");
+    svg.append(axisLabel);
+  });
+  return svg;
+}
+
+// ---------- metrics ----------
+async function metricsView(params) {
+  setActiveNav("metrics");
+  const weeks = Math.min(26, Math.max(1, parseInt(params.get("weeks") || "8", 10)));
+  const data = await api(`/metrics/weekly?weeks=${weeks}`);
+  const current = data.weeks[data.weeks.length - 1];
+  const previous = data.weeks.length > 1 ? data.weeks[data.weeks.length - 2] : null;
+
+  const rangeSelect = h(
+    "select",
+    { onchange: (e) => (location.hash = `#/metrics?weeks=${e.target.value}`) },
+    [4, 8, 12, 26].map((n) => h("option", { value: n, selected: n === weeks }, `Last ${n} weeks`)),
+  );
+
+  const kpi = (label, value, hint) =>
+    h("div", { class: "card kpi" }, h("div", { class: "label" }, label), h("div", { class: "value" }, value),
+      hint ? h("div", { class: "muted", style: "margin-top:4px;font-size:12px" }, hint) : null);
+
+  app.replaceChildren(
+    h("h1", {}, "Metrics"),
+    h("p", { class: "muted" },
+      "Weeks run Monday–Sunday (UTC). The current week is still in progress, so its totals will keep rising until it ends."),
+    h("div", { class: "toolbar" }, h("span", { class: "spacer" }), rangeSelect),
+    h("div", { class: "kpis" },
+      kpi("Active students", data.active_students),
+      kpi("Worksheets sent this week so far", current.total_worksheets,
+        previous ? `${previous.total_worksheets} in the previous full week` : null),
+      kpi("Students active this week", current.distinct_students,
+        current.pct_students_active != null ? `${current.pct_students_active}% of active students` : null),
+      kpi("Avg worksheets/student this week", current.avg_worksheets_per_student ?? "—")),
+    h("div", { class: "card chart-card" },
+      h("h2", {}, "Worksheets sent per week"),
+      barChart(data.weeks, { getValue: (w) => w.total_worksheets, title: "Worksheets sent per week" })),
+    h("div", { class: "grid2" },
+      h("div", { class: "card chart-card" },
+        h("h2", {}, "Avg worksheets solved per student"),
+        barChart(data.weeks, {
+          getValue: (w) => w.avg_worksheets_per_student, formatValue: (v) => v.toFixed(2),
+          title: "Avg worksheets solved per student",
+        })),
+      h("div", { class: "card chart-card" },
+        h("h2", {}, "% of students sending at least one worksheet"),
+        barChart(data.weeks, {
+          getValue: (w) => w.pct_students_active, formatValue: (v) => v.toFixed(0) + "%",
+          title: "% of students sending at least one worksheet",
+        }))),
+    weekByWeekCard(data.weeks));
+}
+
+function weekByWeekCard(weeks) {
+  const headerCells = ["Week", "Worksheets sent", "Students active", "Avg/student", "% active"].map((t) => h("th", {}, t));
+  const bodyRows = [...weeks].reverse().map((w) => {
+    const weekLabel = h("td", {}, `${shortWeekLabel(w.week_start)} \u2013 ${shortWeekLabel(w.week_end)}`);
+    if (w.is_current) weekLabel.append(h("span", { class: "pill needs_review" }, " so far"));
+    return h(
+      "tr",
+      { class: w.is_current ? "changed" : "" },
+      weekLabel,
+      h("td", {}, w.total_worksheets),
+      h("td", {}, w.distinct_students),
+      h("td", {}, w.avg_worksheets_per_student ?? "\u2014"),
+      h("td", {}, w.pct_students_active != null ? w.pct_students_active + "%" : "\u2014"),
+    );
+  });
+  const table = h("table", {}, h("thead", {}, h("tr", {}, headerCells)), h("tbody", {}, bodyRows));
+  return h("div", { class: "card" }, h("h2", {}, "Week by week"), h("div", { class: "table-wrap" }, table));
+}
+
 // ---------- router ----------
 async function route() {
   clearInterval(refreshTimer);
@@ -610,6 +729,7 @@ async function route() {
     else if (parts[0] === "reviews") await reviewsView(params);
     else if (parts[0] === "schools" && parts[1]) await schoolView(parts[1]);
     else if (parts[0] === "schools") await schoolsView();
+    else if (parts[0] === "metrics") await metricsView(params);
     else app.replaceChildren(h("p", {}, "Page not found. ", h("a", { href: "#/" }, "Go to overview")));
     if (parts.length) { updateBadge(); updateStatus(); }
   } catch (e) {
