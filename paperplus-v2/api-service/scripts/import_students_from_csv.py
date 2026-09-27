@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Import a student CSV file into the database.
 
-Each imported student is assigned a four-digit numeric ID starting at 0002 (0001 is
-reserved for a test student), unless --start-id is given.
+If the CSV has an id column (header containing "id" or "roll", e.g. "student_id" or "Roll
+Number"), each student is imported with that exact ID (zero-padded to 4 digits). Otherwise every
+student is assigned a four-digit numeric ID starting at 0002 (0001 is reserved for a test
+student), unless --start-id is given.
 
 Example:
     python3 scripts/import_students_from_csv.py students.csv --school-code PSV
@@ -35,18 +37,35 @@ def extract_student_name(row: dict) -> str | None:
     return None
 
 
-def student_names_from_csv(csv_path: Path) -> list[str]:
+def extract_student_id(row: dict) -> str | None:
+    for key, value in row.items():
+        if value is None:
+            continue
+        normalized_key = str(key).strip().lower()
+        if "id" not in normalized_key and "roll" not in normalized_key:
+            continue
+        if "school" in normalized_key:  # e.g. a "school_id"/"school_code" column
+            continue
+        candidate = str(value).strip()
+        if candidate:
+            return candidate
+    return None
+
+
+def student_rows_from_csv(csv_path: Path) -> list[tuple[str | None, str]]:
+    """Returns [(student_id_or_None, student_name), ...] -- student_id is None for a row with no
+    id/roll column, or an empty value in it, signalling the caller to auto-assign one instead."""
     with open(csv_path, newline="", encoding="utf-8-sig") as handle:
         reader = csv.DictReader(handle)
         if reader.fieldnames is None:
             raise ValueError(f"CSV file is missing a header row: {csv_path}")
 
-        names = []
+        rows = []
         for row in reader:
             name = extract_student_name(row)
             if name:
-                names.append(name)
-    return names
+                rows.append((extract_student_id(row), name))
+    return rows
 
 
 def import_students_from_csv(session: Session, csv_path: Path, school_code: str, start_id: int | None = None) -> list[str]:
@@ -60,10 +79,12 @@ def import_students_from_csv(session: Session, csv_path: Path, school_code: str,
 
     next_id = str(start_id).zfill(4) if start_id is not None else next_student_id(session)
     imported = []
-    for name in student_names_from_csv(csv_path):
-        upsert_student(session, next_id, name, school_code)
-        imported.append(next_id)
-        next_id = str(int(next_id) + 1).zfill(4)
+    for row_id, name in student_rows_from_csv(csv_path):
+        student_id = row_id.zfill(4) if row_id else next_id
+        upsert_student(session, student_id, name, school_code)
+        imported.append(student_id)
+        if not row_id:
+            next_id = str(int(next_id) + 1).zfill(4)
 
     session.commit()
     return imported
