@@ -84,7 +84,15 @@ def _scan_images(scan: Scan) -> dict:
 
 
 def _iso(value: datetime | None) -> str | None:
-    return value.isoformat() if value else None
+    """DB timestamps round-trip as naive datetimes (the `timestamp` columns have no zone, and
+    utcnow() always writes real UTC) -- tag them as UTC explicitly before serializing, otherwise
+    the browser's Date parser treats the zone-less string as already being in the viewer's own
+    local time and renders it hours off (e.g. IST is UTC+5:30)."""
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.isoformat()
 
 
 def _question_details(session: Session, worksheet_id: int) -> dict[int, dict]:
