@@ -1,7 +1,12 @@
-"""JSON API behind the admin/facilitator dashboard (static UI in app/static/admin, mounted at
-/admin). Intentionally unauthenticated for now, per the deployment decision -- the URL isn't
-shared publicly. Write endpoints (corrections, review resolution) go through
+"""JSON API behind the admin/facilitator dashboard (static UI in app/static/admin, served at
+/admin/{project_code}/). Intentionally unauthenticated for now, per the deployment decision -- the
+URL isn't shared publicly. Write endpoints (corrections, review resolution) go through
 app.services.corrections so grading rules live in one place.
+
+Everything except the project list and system monitoring is scoped to one project under
+/api/admin/projects/{project_code}/...: a submission/school/student outside it is a 404. Failed
+scans whose student (and so project) couldn't be determined are "unassigned" and show on every
+project's list until someone resolves them to a student.
 """
 
 from datetime import datetime, timedelta, timezone
@@ -10,12 +15,13 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import func, or_
+from sqlalchemy.sql import ColumnElement
 from sqlmodel import Session, select
 
 from app.core.config import settings
 from app.db.session import get_session
 from app.domain.grading import resolve_answer_key
-from app.models import Question, QuestionOption, School, Scan, ScanReview, Student, Submission, Worksheet
+from app.models import Project, Question, QuestionOption, School, Scan, ScanReview, Student, Submission, Worksheet
 from app.routes.files import relative_artifact_url
 from app.services import corrections as corrections_service
 from app.services import metrics as metrics_service
@@ -25,10 +31,58 @@ from app.services.monitoring import OPEN_REVIEW_STATUSES
 from app.services.vision_client import HTTPVisionClient, VisionClient
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
+project_router = APIRouter(prefix="/api/admin/projects/{project_code}", tags=["admin"])
 
 
 def get_vision_client() -> VisionClient:
     return HTTPVisionClient()
+
+
+def get_project(project_code: str, session: Session = Depends(get_session)) -> Project:
+    project = session.get(Project, project_code)
+    if project is None:
+        raise HTTPException(status_code=404, detail="project not found")
+    return project
+
+
+def _review_project() -> ColumnElement:
+    """A review's project: its scan's (set once the student is known, or guessed from the
+    sender), else its student's. NULL = unassigned. Needs Scan and Student outer-joined."""
+    return func.coalesce(Scan.project_code, Student.project_code)
+
+
+def _reviews_in_project(query, project_code: str):
+    project = _review_project()
+    return (
+        query.outerjoin(Scan, Scan.id == ScanReview.scan_id)
+        .outerjoin(Student, Student.student_id == ScanReview.student_id)
+        .where(or_(project == project_code, project.is_(None)))
+    )
+
+
+def _get_submission(session: Session, submission_id: int, project_code: str) -> Submission:
+    row = session.exec(
+        select(Submission)
+        .join(Student, Student.student_id == Submission.student_id)
+        .where(Submission.submission_id == submission_id, Student.project_code == project_code)
+    ).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="submission not found")
+    return row
+
+
+def _get_review(session: Session, review_id: int, project_code: str) -> ScanReview:
+    row = session.exec(
+        _reviews_in_project(select(ScanReview), project_code).where(ScanReview.review_id == review_id)
+    ).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="review not found")
+    return row
+
+
+@project_router.get("")
+def project_info(project: Project = Depends(get_project)) -> dict:
+    return {"project_code": project.project_code, "project_name": project.project_name}
 
 
 class AnswerCorrection(BaseModel):
@@ -119,17 +173,25 @@ def _question_details(session: Session, worksheet_id: int) -> dict[int, dict]:
     return details
 
 
-@router.get("/summary")
-def summary(session: Session = Depends(get_session)) -> dict:
+@project_router.get("/summary")
+def summary(project: Project = Depends(get_project), session: Session = Depends(get_session)) -> dict:
+    code = project.project_code
     since = datetime.now(timezone.utc) - timedelta(hours=24)
     count = lambda stmt: session.exec(stmt).one()  # noqa: E731
+    submissions = (
+        select(func.count()).select_from(Submission)
+        .join(Student, Student.student_id == Submission.student_id).where(Student.project_code == code)
+    )
     return {
-        "schools": count(select(func.count()).select_from(School)),
-        "students": count(select(func.count()).select_from(Student).where(Student.is_active.is_(True))),
-        "submissions": count(select(func.count()).select_from(Submission)),
-        "submissions_24h": count(select(func.count()).select_from(Submission).where(Submission.submitted_at >= since)),
+        "schools": count(select(func.count()).select_from(School).where(School.project_code == code)),
+        "students": count(
+            select(func.count()).select_from(Student).where(Student.is_active.is_(True), Student.project_code == code)
+        ),
+        "submissions": count(submissions),
+        "submissions_24h": count(submissions.where(Submission.submitted_at >= since)),
         "open_reviews": count(
-            select(func.count()).select_from(ScanReview).where(ScanReview.status.in_(OPEN_REVIEW_STATUSES))
+            _reviews_in_project(select(func.count()).select_from(ScanReview), code)
+            .where(ScanReview.status.in_(OPEN_REVIEW_STATUSES))
         ),
     }
 
@@ -140,24 +202,30 @@ def monitoring(session: Session = Depends(get_session)) -> dict:
     return monitoring_service.collect(session)
 
 
-@router.get("/metrics/weekly")
+@project_router.get("/metrics/weekly")
 def weekly_metrics(
     weeks: int = Query(metrics_service.DEFAULT_WEEKS, ge=1, le=metrics_service.MAX_WEEKS),
+    project: Project = Depends(get_project),
     session: Session = Depends(get_session),
 ) -> dict:
-    return metrics_service.collect(session, weeks)
+    return metrics_service.collect(session, weeks, project.project_code)
 
 
-@router.get("/submissions")
+@project_router.get("/submissions")
 def list_submissions(
     limit: int = Query(25, ge=1, le=200),
     offset: int = Query(0, ge=0),
     student_id: str | None = None,
     worksheet_id: int | None = None,
+    project: Project = Depends(get_project),
     session: Session = Depends(get_session),
 ) -> dict:
-    query = select(Submission, Student).join(Student, Student.student_id == Submission.student_id)
-    total_query = select(func.count()).select_from(Submission)
+    in_project = Student.project_code == project.project_code
+    query = select(Submission, Student).join(Student, Student.student_id == Submission.student_id).where(in_project)
+    total_query = (
+        select(func.count()).select_from(Submission)
+        .join(Student, Student.student_id == Submission.student_id).where(in_project)
+    )
     if student_id:
         query = query.where(Submission.student_id == student_id)
         total_query = total_query.where(Submission.student_id == student_id)
@@ -185,11 +253,11 @@ def list_submissions(
     }
 
 
-@router.get("/submissions/{submission_id}")
-def submission_detail(submission_id: int, session: Session = Depends(get_session)) -> dict:
-    submission = session.get(Submission, submission_id)
-    if submission is None:
-        raise HTTPException(status_code=404, detail="submission not found")
+@project_router.get("/submissions/{submission_id}")
+def submission_detail(
+    submission_id: int, project: Project = Depends(get_project), session: Session = Depends(get_session)
+) -> dict:
+    submission = _get_submission(session, submission_id, project.project_code)
     student = session.get(Student, submission.student_id)
     worksheet = session.get(Worksheet, submission.worksheet_id)
     scans = session.exec(
@@ -268,10 +336,14 @@ def submission_detail(submission_id: int, session: Session = Depends(get_session
     }
 
 
-@router.patch("/submissions/{submission_id}/answers")
+@project_router.patch("/submissions/{submission_id}/answers")
 def correct_submission_answers(
-    submission_id: int, body: CorrectSubmissionRequest, session: Session = Depends(get_session)
+    submission_id: int,
+    body: CorrectSubmissionRequest,
+    project: Project = Depends(get_project),
+    session: Session = Depends(get_session),
 ) -> dict:
+    _get_submission(session, submission_id, project.project_code)
     try:
         submission = corrections_service.correct_submission(
             session, submission_id, _to_dict(body.corrections), body.corrected_by.strip(), body.question_paper_code
@@ -287,22 +359,25 @@ def correct_submission_answers(
     }
 
 
-@router.get("/reviews")
+@project_router.get("/reviews")
 def list_reviews(
     status: str = Query("open", description="open (failed+needs_review), all, or a specific status"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
+    project: Project = Depends(get_project),
     session: Session = Depends(get_session),
 ) -> dict:
-    query = select(ScanReview)
-    total_query = select(func.count()).select_from(ScanReview)
+    query = _reviews_in_project(select(ScanReview, _review_project()), project.project_code)
+    total_query = _reviews_in_project(select(func.count()).select_from(ScanReview), project.project_code)
     if status == "open":
         query = query.where(ScanReview.status.in_(OPEN_REVIEW_STATUSES))
         total_query = total_query.where(ScanReview.status.in_(OPEN_REVIEW_STATUSES))
     elif status != "all":
         query = query.where(ScanReview.status == status)
         total_query = total_query.where(ScanReview.status == status)
-    reviews = session.exec(query.order_by(ScanReview.created_at.desc()).offset(offset).limit(limit)).all()
+    rows = session.exec(query.order_by(ScanReview.created_at.desc()).offset(offset).limit(limit)).all()
+    reviews = [r for r, _ in rows]
+    unassigned = {r.review_id for r, review_project in rows if review_project is None}
     scans = {
         s.id: s
         for s in session.exec(select(Scan).where(Scan.id.in_([r.scan_id for r in reviews if r.scan_id]))).all()
@@ -321,6 +396,7 @@ def list_reviews(
                 "submission_id": r.submission_id,
                 "from_number": scans[r.scan_id].from_number if r.scan_id in scans else None,
                 "has_image": r.scan_id in scans,
+                "unassigned": r.review_id in unassigned,
                 # Resolvable straight from this list either with real marks, or -- once a worksheet
                 # is known (e.g. after a retry, or an earlier scan of the same worksheet decoded it
                 # fine) -- by manually grading from the photo; see review_detail for the full logic.
@@ -335,18 +411,17 @@ def list_reviews(
     }
 
 
-@router.get("/reviews/{review_id}")
+@project_router.get("/reviews/{review_id}")
 def review_detail(
     review_id: int,
     worksheet_id: int | None = None,
     question_paper_code: str | None = None,
+    project: Project = Depends(get_project),
     session: Session = Depends(get_session),
 ) -> dict:
     """worksheet_id / question_paper_code optionally override what the scan decoded, so the UI can
     preview the answer key for a different worksheet/code before saving."""
-    review = session.get(ScanReview, review_id)
-    if review is None:
-        raise HTTPException(status_code=404, detail="review not found")
+    review = _get_review(session, review_id, project.project_code)
     scan = session.get(Scan, review.scan_id) if review.scan_id else None
     vision = (scan.vision_result if scan else None) or {}
     marks = vision.get("question_marks", [])
@@ -399,6 +474,13 @@ def review_detail(
         "submission_id": review.submission_id,
         "detected_roll_number": review.detected_roll_number,
         "student_id": review.student_id,
+        "unassigned": session.exec(
+            select(_review_project())
+            .select_from(ScanReview)
+            .outerjoin(Scan, Scan.id == ScanReview.scan_id)
+            .outerjoin(Student, Student.student_id == ScanReview.student_id)
+            .where(ScanReview.review_id == review.review_id)
+        ).one() is None,
         "scan": None if scan is None else {
             "scan_id": scan.id,
             "from_number": scan.from_number,
@@ -406,6 +488,7 @@ def review_detail(
             "template_name": scan.template_name,
             "worksheet_id": scan.worksheet_id,
             "question_paper_code": scan.question_paper_code,
+            "project_code": scan.project_code,
             "images": _scan_images(scan),
         },
         "worksheet": None if worksheet is None else {
@@ -421,10 +504,11 @@ def review_detail(
     }
 
 
-@router.post("/reviews/{review_id}/retry")
+@project_router.post("/reviews/{review_id}/retry")
 def retry_review_scan(
     review_id: int,
     body: RetryScanRequest,
+    project: Project = Depends(get_project),
     session: Session = Depends(get_session),
     vision_client: VisionClient = Depends(get_vision_client),
 ) -> dict:
@@ -432,6 +516,7 @@ def retry_review_scan(
     both currently leave scan.vision_result empty): re-sends the original photo to vision-service
     with the admin-supplied worksheet_id as a hint, so question_marks can be recovered and the
     review becomes resolvable through the normal /resolve flow below."""
+    _get_review(session, review_id, project.project_code)
     try:
         corrections_service.retry_scan(
             session, vision_client, review_id, body.worksheet_id,
@@ -442,11 +527,17 @@ def retry_review_scan(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except CorrectionError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return review_detail(review_id, session=session)
+    return review_detail(review_id, project=project, session=session)
 
 
-@router.post("/reviews/{review_id}/resolve")
-def resolve_review(review_id: int, body: ResolveReviewRequest, session: Session = Depends(get_session)) -> dict:
+@project_router.post("/reviews/{review_id}/resolve")
+def resolve_review(
+    review_id: int,
+    body: ResolveReviewRequest,
+    project: Project = Depends(get_project),
+    session: Session = Depends(get_session),
+) -> dict:
+    _get_review(session, review_id, project.project_code)
     try:
         submission = corrections_service.resolve_review(
             session,
@@ -456,6 +547,7 @@ def resolve_review(review_id: int, body: ResolveReviewRequest, session: Session 
             corrected_by=body.corrected_by.strip(),
             worksheet_id=body.worksheet_id,
             question_paper_code=body.question_paper_code,
+            project_code=project.project_code,
         )
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -468,8 +560,14 @@ def resolve_review(review_id: int, body: ResolveReviewRequest, session: Session 
     }
 
 
-@router.post("/reviews/{review_id}/status")
-def set_review_status(review_id: int, body: ReviewStatusRequest, session: Session = Depends(get_session)) -> dict:
+@project_router.post("/reviews/{review_id}/status")
+def set_review_status(
+    review_id: int,
+    body: ReviewStatusRequest,
+    project: Project = Depends(get_project),
+    session: Session = Depends(get_session),
+) -> dict:
+    _get_review(session, review_id, project.project_code)
     try:
         review = corrections_service.set_review_status(session, review_id, body.status, body.corrected_by)
     except NotFoundError as exc:
@@ -479,13 +577,14 @@ def set_review_status(review_id: int, body: ReviewStatusRequest, session: Sessio
     return {"review_id": review.review_id, "status": review.status}
 
 
-@router.get("/students")
+@project_router.get("/students")
 def search_students(
     q: str = Query("", description="matches student_id prefix or name substring"),
     limit: int = Query(20, ge=1, le=100),
+    project: Project = Depends(get_project),
     session: Session = Depends(get_session),
 ) -> list[dict]:
-    query = select(Student)
+    query = select(Student).where(Student.project_code == project.project_code)
     term = q.strip()
     if term:
         query = query.where(or_(Student.student_id.like(f"{term}%"), Student.student_name.ilike(f"%{term}%")))
@@ -496,34 +595,44 @@ def search_students(
     ]
 
 
-@router.get("/schools")
-def list_schools(session: Session = Depends(get_session)) -> list[dict]:
+@project_router.get("/schools")
+def list_schools(project: Project = Depends(get_project), session: Session = Depends(get_session)) -> list[dict]:
     counts = dict(
         session.exec(
-            select(Student.student_school_code, func.count()).where(Student.is_active.is_(True)).group_by(Student.student_school_code)
+            select(Student.student_school_code, func.count())
+            .where(Student.is_active.is_(True), Student.project_code == project.project_code)
+            .group_by(Student.student_school_code)
         ).all()
     )
-    schools = session.exec(select(School).order_by(School.school_name)).all()
+    schools = session.exec(
+        select(School).where(School.project_code == project.project_code).order_by(School.school_name)
+    ).all()
     return [
         {"school_code": s.school_code, "school_name": s.school_name, "student_count": counts.get(s.school_code, 0)}
         for s in schools
     ]
 
 
-@router.get("/schools/{school_code}")
-def school_detail(school_code: str, session: Session = Depends(get_session)) -> dict:
+@project_router.get("/schools/{school_code}")
+def school_detail(
+    school_code: str, project: Project = Depends(get_project), session: Session = Depends(get_session)
+) -> dict:
     """Every active student at a school, with their last submission and last 3 worksheets
     (level + marks) -- so a facilitator visiting a school can see at a glance who has and hasn't
     submitted. Students who have never submitted sort first, then oldest-last-submission next,
     so whoever needs following up with is at the top rather than buried alphabetically.
     """
     school = session.get(School, school_code)
-    if school is None:
+    if school is None or school.project_code != project.project_code:
         raise HTTPException(status_code=404, detail="school not found")
 
     students = session.exec(
         select(Student)
-        .where(Student.student_school_code == school_code, Student.is_active.is_(True))
+        .where(
+            Student.student_school_code == school_code,
+            Student.is_active.is_(True),
+            Student.project_code == project.project_code,
+        )
         .order_by(Student.student_name)
     ).all()
     student_ids = [s.student_id for s in students]

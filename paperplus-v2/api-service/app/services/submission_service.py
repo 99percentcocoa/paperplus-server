@@ -101,6 +101,7 @@ def handle_incoming_image(
 
     try:
         student = _validate_student(session, result.roll_number)
+        _assign_project(session, scan, student.project_code)
         worksheet = _validate_worksheet(session, result.worksheet_id)
         answer_key = _validate_answer_key(session, worksheet.worksheet_id, result.question_paper_code)
     except InvalidStudentError as exc:
@@ -267,10 +268,34 @@ def close_superseded_reviews(
     return closed
 
 
+def _assign_project(session: Session, scan: Scan, project_code: str) -> None:
+    scan.project_code = project_code
+    session.add(scan)
+    session.commit()
+
+
+def _project_from_sender_history(session: Session, from_number: str | None) -> str | None:
+    """Best guess at an unidentified scan's project: whatever this phone's latest scan with a
+    known project belonged to (a facilitator's phone effectively works for one program). None
+    leaves the scan unassigned, i.e. on every project's failed-scan list."""
+    if not from_number:
+        return None
+    return session.exec(
+        select(Scan.project_code)
+        .where(Scan.from_number == from_number, Scan.project_code.is_not(None))
+        .order_by(Scan.created_at.desc(), Scan.id.desc())
+        .limit(1)
+    ).first()
+
+
 def _record_scan(session: Session, correlation_id: str, from_number: str | None, image_path: str, result=None) -> Scan:
     """One Scan row per received image (success or failure) -- keeps the file locations and the
-    full vision result so the dashboard can show and re-grade it later."""
-    scan = Scan(correlation_id=correlation_id, from_number=from_number, upload_path=image_path)
+    full vision result so the dashboard can show and re-grade it later. project_code starts as the
+    sender-history guess and is overwritten with the student's own once the student is known."""
+    scan = Scan(
+        correlation_id=correlation_id, from_number=from_number, upload_path=image_path,
+        project_code=_project_from_sender_history(session, from_number),
+    )
     if result is not None:
         scan.dewarped_path = result.dewarped_image_path
         scan.worksheet_id = result.worksheet_id

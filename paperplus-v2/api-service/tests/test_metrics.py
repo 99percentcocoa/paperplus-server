@@ -73,7 +73,7 @@ def test_collect_counts_a_real_scan_in_its_own_week(scan_env):
 def test_weekly_metrics_endpoint(scan_env, client):
     scan_env.run_scan({1: "A", 2: "B", 3: "A", 4: None})
 
-    response = client.get("/api/admin/metrics/weekly", params={"weeks": 3})
+    response = client.get("/api/admin/projects/paperplus/metrics/weekly", params={"weeks": 3})
 
     assert response.status_code == 200
     body = response.json()
@@ -81,5 +81,5 @@ def test_weekly_metrics_endpoint(scan_env, client):
     assert body["weeks"][-1]["is_current"] is True
     assert body["weeks"][-1]["total_worksheets"] >= 1
 
-    assert client.get("/api/admin/metrics/weekly", params={"weeks": 0}).status_code == 422
-    assert client.get("/api/admin/metrics/weekly", params={"weeks": 999}).status_code == 422
+    assert client.get("/api/admin/projects/paperplus/metrics/weekly", params={"weeks": 0}).status_code == 422
+    assert client.get("/api/admin/projects/paperplus/metrics/weekly", params={"weeks": 999}).status_code == 422

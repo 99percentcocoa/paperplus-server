@@ -90,6 +90,9 @@ class Scan(SQLModel, table=True):
     template_name: str | None = None
     roll_number: str | None = None
     question_paper_code: str | None = None
+    # The student's project; for an unidentified student, inferred from the sender's earlier
+    # scans, else NULL ("unassigned" -- shown on every project's dashboard until resolved).
+    project_code: str | None = Field(default=None, foreign_key="projects.project_code", index=True)
     vision_result: dict | None = Field(default=None, sa_column=Column(JSONB))
     outcome: str = Field(default=ScanOutcome.FAILED.value)
     submission_id: int | None = Field(

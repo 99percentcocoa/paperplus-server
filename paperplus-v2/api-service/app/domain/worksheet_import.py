@@ -17,8 +17,9 @@ from string import ascii_uppercase
 
 from sqlmodel import Session, select
 
-from app.domain.errors import InvalidSubmissionDataError
-from app.models import Question, QuestionOption, School, Skill, Student, Worksheet
+from app.domain.errors import InvalidSubmissionDataError, ProjectMismatchError
+from app.models import Project, Question, QuestionOption, School, Skill, Student, Worksheet
+from app.models.core import DEFAULT_PROJECT_CODE
 from app.models.worksheet import QuestionPaperVariant, WorksheetCategory, WorksheetPage, WorksheetTemplate
 from shared.worksheet_templates import QUESTIONS_PER_PAGE
 
@@ -308,14 +309,39 @@ def insert_question_paper_variant(
     return variant_ids
 
 
-def upsert_school(session: Session, school_code: str, school_name: str) -> School:
+def upsert_project(session: Session, project_code: str, project_name: str) -> Project:
+    existing = session.get(Project, project_code)
+    if existing is not None:
+        existing.project_name = project_name
+        session.add(existing)
+        return existing
+
+    project = Project(project_code=project_code, project_name=project_name)
+    session.add(project)
+    session.flush()
+    return project
+
+
+def _require_project(session: Session, project_code: str) -> None:
+    if session.get(Project, project_code) is None:
+        raise ProjectMismatchError(f"Unknown project '{project_code}'.")
+
+
+def upsert_school(
+    session: Session, school_code: str, school_name: str, project_code: str = DEFAULT_PROJECT_CODE
+) -> School:
+    _require_project(session, project_code)
     existing = session.get(School, school_code)
     if existing is not None:
+        if existing.project_code != project_code:
+            raise ProjectMismatchError(
+                f"School '{school_code}' already belongs to project '{existing.project_code}', not '{project_code}'."
+            )
         existing.school_name = school_name
         session.add(existing)
         return existing
 
-    school = School(school_code=school_code, school_name=school_name)
+    school = School(school_code=school_code, school_name=school_name, project_code=project_code)
     session.add(school)
     session.flush()
     return school
@@ -333,10 +359,22 @@ def next_student_id(session: Session) -> str:
     return str(max(numeric_ids) + 1).zfill(4)
 
 
-def upsert_student(session: Session, student_id: str, student_name: str, school_code: str, current_level: str = "A") -> Student:
+def upsert_student(
+    session: Session,
+    student_id: str,
+    student_name: str,
+    school_code: str,
+    current_level: str = "A",
+    project_code: str = DEFAULT_PROJECT_CODE,
+) -> Student:
     normalized_id = student_id.strip().zfill(4)
     existing = session.get(Student, normalized_id)
     if existing is not None:
+        if existing.project_code != project_code:
+            raise ProjectMismatchError(
+                f"Student ID '{normalized_id}' is already taken by {existing.student_name!r} in project "
+                f"'{existing.project_code}' -- student IDs must be unique across projects."
+            )
         return existing
 
     student = Student(
@@ -344,6 +382,7 @@ def upsert_student(session: Session, student_id: str, student_name: str, school_
         student_name=student_name,
         student_school_code=school_code,
         current_level=current_level,
+        project_code=project_code,
     )
     session.add(student)
     session.flush()

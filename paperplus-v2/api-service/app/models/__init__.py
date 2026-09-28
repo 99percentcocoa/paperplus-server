@@ -1,4 +1,4 @@
-from app.models.core import School, Skill, Student
+from app.models.core import Project, School, Skill, Student
 from app.models.mastery import MasteryHistory, StudentSkillMastery
 from app.models.media import Media
 from app.models.submission import Attempt, ProcessingEvent, ProcessingState, Scan, ScanReview, Submission
@@ -14,6 +14,7 @@ from app.models.worksheet import (
 )
 
 __all__ = [
+    "Project",
     "School",
     "Skill",
     "Student",

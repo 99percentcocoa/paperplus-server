@@ -212,8 +212,10 @@ def resolve_review(
     corrected_by: str,
     worksheet_id: int | None = None,
     question_paper_code: str | None = None,
+    project_code: str | None = None,
 ) -> Submission:
-    """Turn a failed/needs-review scan into a graded submission for the student the admin picked."""
+    """Turn a failed/needs-review scan into a graded submission for the student the admin picked.
+    project_code (the dashboard it's resolved from) must match the student's project, if given."""
     review = session.get(ScanReview, review_id)
     if review is None:
         raise NotFoundError(f"Review {review_id} not found.")
@@ -230,6 +232,8 @@ def resolve_review(
     student = session.get(Student, student_id)
     if student is None:
         raise CorrectionError(f"Student '{student_id}' does not exist.")
+    if project_code is not None and student.project_code != project_code:
+        raise CorrectionError(f"Student '{student_id}' belongs to project '{student.project_code}', not '{project_code}'.")
     target_worksheet_id = worksheet_id or scan.worksheet_id
     if target_worksheet_id is None:
         raise CorrectionError("This scan couldn't identify its worksheet; supply the worksheet_id.")
@@ -288,6 +292,7 @@ def resolve_review(
     scan.outcome = ScanOutcome.GRADED.value
     scan.submission_id = submission.submission_id
     scan.worksheet_id = worksheet.worksheet_id
+    scan.project_code = student.project_code
     filename = _regenerate_checked_image(session, scan, scanned_answers)
     if filename:
         submission.checked_image_path = scan.checked_image_path

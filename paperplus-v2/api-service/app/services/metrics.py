@@ -77,19 +77,22 @@ def _instant(column_expr):
     return cast(column_expr, DateTime(timezone=True))
 
 
-def collect(session: Session, weeks: int = DEFAULT_WEEKS) -> dict:
+def collect(session: Session, weeks: int = DEFAULT_WEEKS, project_code: str | None = None) -> dict:
+    """project_code None = every project (used by tests of the bucketing logic itself)."""
     weeks = max(1, min(weeks, MAX_WEEKS))
     now = datetime.now(timezone.utc)
     since = week_start_utc(now) - timedelta(weeks=weeks - 1)
 
+    in_project = [Student.project_code == project_code] if project_code is not None else []
     active_students = session.exec(
-        select(func.count()).select_from(Student).where(Student.is_active.is_(True))
+        select(func.count()).select_from(Student).where(Student.is_active.is_(True), *in_project)
     ).one()
 
     week_col = func.date_trunc("week", _instant(Submission.submitted_at), "UTC")
     query = (
         select(week_col, func.count(), func.count(Submission.student_id.distinct()))
-        .where(_instant(Submission.submitted_at) >= since)
+        .join(Student, Student.student_id == Submission.student_id)
+        .where(_instant(Submission.submitted_at) >= since, *in_project)
         .group_by(week_col)
     )
     rows = [

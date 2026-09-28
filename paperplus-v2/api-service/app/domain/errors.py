@@ -17,5 +17,10 @@ class InvalidAnswerKeyError(ValueError):
     """
 
 
+class ProjectMismatchError(ValueError):
+    """Raised when a school/student being imported into one project already exists in another
+    (student IDs are globally unique across projects, so this would silently cross them)."""
+
+
 class VisionClientError(RuntimeError):
     """Raised when the vision-service call fails or returns an unusable result."""

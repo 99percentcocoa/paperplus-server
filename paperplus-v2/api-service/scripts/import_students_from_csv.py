@@ -6,8 +6,12 @@ Number"), each student is imported with that exact ID (zero-padded to 4 digits).
 student is assigned a four-digit numeric ID starting at 0002 (0001 is reserved for a test
 student), unless --start-id is given.
 
+Student IDs are unique across all projects: importing an ID that already belongs to a student in
+another project is refused.
+
 Example:
     python3 scripts/import_students_from_csv.py students.csv --school-code PSV
+    python3 scripts/import_students_from_csv.py navodaya.csv --school-code NAV --project navodaya
 """
 
 import argparse
@@ -21,6 +25,7 @@ sys.path.insert(0, str(REPO_ROOT))
 from sqlmodel import Session
 
 from app.db.session import engine
+from app.models.core import DEFAULT_PROJECT_CODE
 from app.domain.worksheet_import import next_student_id, upsert_school, upsert_student
 
 
@@ -68,20 +73,26 @@ def student_rows_from_csv(csv_path: Path) -> list[tuple[str | None, str]]:
     return rows
 
 
-def import_students_from_csv(session: Session, csv_path: Path, school_code: str, start_id: int | None = None) -> list[str]:
+def import_students_from_csv(
+    session: Session,
+    csv_path: Path,
+    school_code: str,
+    start_id: int | None = None,
+    project_code: str = DEFAULT_PROJECT_CODE,
+) -> list[str]:
     if not csv_path.exists():
         raise FileNotFoundError(f"CSV file not found: {csv_path}")
     if not school_code or not school_code.strip():
         raise ValueError("school_code is required")
 
     school_code = school_code.strip()
-    upsert_school(session, school_code, school_code)
+    upsert_school(session, school_code, school_code, project_code)
 
     next_id = str(start_id).zfill(4) if start_id is not None else next_student_id(session)
     imported = []
     for row_id, name in student_rows_from_csv(csv_path):
         student_id = row_id.zfill(4) if row_id else next_id
-        upsert_student(session, student_id, name, school_code)
+        upsert_student(session, student_id, name, school_code, project_code=project_code)
         imported.append(student_id)
         if not row_id:
             next_id = str(int(next_id) + 1).zfill(4)
@@ -95,14 +106,15 @@ def main() -> None:
     parser.add_argument("csv_path", help="Path to the student CSV file.")
     parser.add_argument("--school-code", help="School code to assign to all imported students. Prompted if omitted.")
     parser.add_argument("--start-id", type=int, default=None, help="Optional numeric starting ID. Defaults to the next free 4-digit id.")
+    parser.add_argument("--project", default=DEFAULT_PROJECT_CODE, help="Project the school and students belong to (default: %(default)s).")
     args = parser.parse_args()
 
     school_code = args.school_code or input("Enter school code: ").strip()
 
     try:
         with Session(engine) as session:
-            imported = import_students_from_csv(session, Path(args.csv_path), school_code, args.start_id)
-        print(f"Imported {len(imported)} students for school {school_code}.")
+            imported = import_students_from_csv(session, Path(args.csv_path), school_code, args.start_id, args.project)
+        print(f"Imported {len(imported)} students for school {school_code} (project {args.project}).")
         if imported:
             print(f"First ID: {imported[0]} | Last ID: {imported[-1]}")
     except Exception as exc:

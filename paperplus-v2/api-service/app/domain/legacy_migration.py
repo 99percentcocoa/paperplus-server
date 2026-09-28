@@ -68,12 +68,17 @@ def convert_answers(answers_json) -> list[dict]:
     return converted
 
 
+# Seeded by Alembic migrations rather than migrated from the legacy DB, so never wiped.
+KEPT_TABLES = ("alembic_version", "projects")
+
+
 def wipe_target(session: Session) -> list[str]:
-    """TRUNCATE every data table except alembic_version. Transactional, so a dry-run undoes it."""
+    """TRUNCATE every data table except KEPT_TABLES. Transactional, so a dry-run undoes it."""
     tables = [
         r[0]
         for r in session.execute(
-            text("SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename <> 'alembic_version' ORDER BY 1")
+            text("SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND NOT (tablename = ANY(:kept)) ORDER BY 1"),
+            {"kept": list(KEPT_TABLES)},
         )
     ]
     session.execute(text("TRUNCATE " + ", ".join(f'"{t}"' for t in tables) + " RESTART IDENTITY CASCADE"))

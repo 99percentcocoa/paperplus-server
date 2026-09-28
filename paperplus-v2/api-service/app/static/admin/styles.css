@@ -49,6 +49,7 @@ tr.clickable:hover td { background: #f9fafb; }
 .pill.ok { background: #d1fae5; color: #065f46; }
 .pill.warning { background: #fef3c7; color: #92400e; }
 .pill.critical { background: #fee2e2; color: #991b1b; }
+.pill.unassigned { background: #f3f4f6; color: #4b5563; border: 1px dashed #9ca3af; }
 button, .btn { font: inherit; border: 1px solid var(--border); background: #fff; border-radius: 8px; padding: 6px 14px; cursor: pointer; }
 button:hover { background: #f3f4f6; }
 button.primary { background: var(--primary); border-color: var(--primary); color: #fff; }

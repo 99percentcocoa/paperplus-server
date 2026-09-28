@@ -1,4 +1,5 @@
-/* PaperPlus admin dashboard. Plain JS, no build step. Talks to /api/admin/*.
+/* Admin dashboard for one project, served at /admin/<project_code>/. Plain JS, no build step.
+ * Talks to /api/admin/projects/<project_code>/* (and the global /api/admin/monitoring).
  * All dynamic content is inserted via h() as text nodes (never innerHTML), so student names,
  * error reasons etc. can't inject markup. */
 "use strict";
@@ -9,6 +10,10 @@ whoamiInput.value = localStorage.getItem("paperplus_admin_name") || "";
 whoamiInput.addEventListener("input", () => localStorage.setItem("paperplus_admin_name", whoamiInput.value.trim()));
 
 let refreshTimer = null;
+
+// /admin/<project_code>/ -- every data call is scoped to this project.
+const PROJECT = decodeURIComponent(location.pathname.split("/")[2] || "");
+const GLOBAL_PATHS = ["/monitoring"];
 
 // ---------- helpers ----------
 function h(tag, attrs, ...kids) {
@@ -29,7 +34,10 @@ function h(tag, attrs, ...kids) {
 }
 
 async function api(path, options = {}) {
-  const res = await fetch("/api/admin" + path, {
+  const base = GLOBAL_PATHS.some((p) => path.startsWith(p))
+    ? "/api/admin"
+    : `/api/admin/projects/${encodeURIComponent(PROJECT)}`;
+  const res = await fetch(base + path, {
     headers: { "Content-Type": "application/json" },
     ...options,
     body: options.body ? JSON.stringify(options.body) : undefined,
@@ -164,7 +172,7 @@ function reviewsTable(items) {
     h("thead", {}, h("tr", {}, ["Status", "Roll no.", "Worksheet", "Reason", "When"].map((t) => h("th", {}, t)))),
     h("tbody", {}, items.length ? items.map((r) =>
       h("tr", { class: "clickable", onclick: () => (location.hash = `#/reviews/${r.review_id}`) },
-        h("td", {}, pill(r.status)),
+        h("td", {}, pill(r.status), r.unassigned ? [" ", h("span", { class: "pill unassigned", title: "Student not identified, so this scan could belong to any project" }, "unassigned")] : null),
         h("td", {}, r.detected_roll_number || r.student_id || "Unknown"),
         h("td", {}, r.worksheet_id ?? "—"),
         h("td", {}, r.error_reason || ""),
@@ -390,6 +398,9 @@ async function reviewView(id, overrides = {}, keep = {}) {
       `${fmtDate(data.created_at)}` + (data.scan?.from_number ? ` · from ${data.scan.from_number}` : "") +
       (data.scan?.page_no ? ` · page ${data.scan.page_no}` : "")),
     h("div", { class: "notice error" }, data.error_reason || "Unknown failure"),
+    data.unassigned ? h("div", { class: "notice" },
+      "The student wasn't identified, so this scan isn't tied to a project yet and shows on every project's dashboard. " +
+      "Resolving it to a student here assigns it to this project.") : null,
   ];
   const viewer = data.scan ? imageViewer([data.scan]) : imageViewer([]);
   const dismiss = async () => {
@@ -738,6 +749,13 @@ async function route() {
   window.scrollTo(0, 0);
 }
 
+async function loadProject() {
+  const project = await api("");
+  document.title = `${project.project_name} Admin`;
+  document.getElementById("brand").textContent = project.project_name;
+}
+
 setInterval(updateStatus, 60000);
 window.addEventListener("hashchange", route);
+loadProject().catch(() => {});
 route();
