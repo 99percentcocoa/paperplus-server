@@ -19,6 +19,21 @@ class CommunicationClient(Protocol):
     def send_image(self, to_number: str, image_url: str, caption: str = "") -> None: ...
 
 
+class CapturingCommunicationClient:
+    """Records replies instead of sending them -- for scans uploaded directly (admin API), where
+    the replies are returned in the HTTP response rather than going out over WhatsApp."""
+
+    def __init__(self):
+        self.messages: list[str] = []
+        self.images: list[str] = []
+
+    def send_message(self, to_number: str, message: str) -> None:
+        self.messages.append(message)
+
+    def send_image(self, to_number: str, image_url: str, caption: str = "") -> None:
+        self.images.append(image_url)
+
+
 class ExotelCommunicationClient:
     def __init__(self):
         self._api_url = (

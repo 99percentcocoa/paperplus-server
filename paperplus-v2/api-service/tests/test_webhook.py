@@ -159,7 +159,8 @@ def test_webhook_continues_batch_after_one_message_raises_unhandled_error(sessio
     call_count = {"n": 0}
 
     class SequencedVisionClient:
-        def process(self, image_path, correlation_id, template_hint=None):
+        def process(self, image_path, correlation_id, template_hint=None, skip_corner_tags=False,
+                    roll_number=None, question_paper_code=None):
             call_count["n"] += 1
             if call_count["n"] == 1:
                 raise RuntimeError("unexpected bug, not a VisionClientError")

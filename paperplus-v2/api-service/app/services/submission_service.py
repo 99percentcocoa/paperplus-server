@@ -72,7 +72,14 @@ def handle_incoming_image(
     from_number: str,
     image_path: str,
     correlation_id: str,
+    *,
+    roll_number: str | None = None,
+    question_paper_code: str | None = None,
+    project_code: str | None = None,
 ) -> None:
+    """roll_number / question_paper_code, when given, replace reading those handwritten fields
+    from the photo. project_code, when given (a scan uploaded through a project's admin API),
+    pins the scan to that project and refuses a student from any other project."""
     # Set (not just read) here, not only in webhook.py, so this contextvar is always correct
     # regardless of caller (scripts/test_local_image.py and tests call this directly, bypassing
     # webhook.py's own correlation_id_var.set()) -- every log call below this point, and the
@@ -80,10 +87,12 @@ def handle_incoming_image(
     correlation_id_var.set(correlation_id)
 
     try:
-        result = vision_client.process(image_path, correlation_id)
+        result = vision_client.process(
+            image_path, correlation_id, roll_number=roll_number, question_paper_code=question_paper_code,
+        )
     except VisionClientError as exc:
         logger.exception("vision-service call failed")
-        scan = _record_scan(session, correlation_id, from_number, image_path)
+        scan = _record_scan(session, correlation_id, from_number, image_path, project_code=project_code)
         _record_scan_review(
             session, status=ScanReviewStatus.FAILED, error_reason=str(exc), scan=scan,
         )
@@ -97,10 +106,10 @@ def handle_incoming_image(
         result.roll_number, result.roll_number_confidence, result.question_paper_code,
         len(result.question_marks),
     )
-    scan = _record_scan(session, correlation_id, from_number, image_path, result)
+    scan = _record_scan(session, correlation_id, from_number, image_path, result, project_code=project_code)
 
     try:
-        student = _validate_student(session, result.roll_number)
+        student = _validate_student(session, result.roll_number, project_code)
         _assign_project(session, scan, student.project_code)
         worksheet = _validate_worksheet(session, result.worksheet_id)
         answer_key = _validate_answer_key(session, worksheet.worksheet_id, result.question_paper_code)
@@ -288,13 +297,16 @@ def _project_from_sender_history(session: Session, from_number: str | None) -> s
     ).first()
 
 
-def _record_scan(session: Session, correlation_id: str, from_number: str | None, image_path: str, result=None) -> Scan:
+def _record_scan(
+    session: Session, correlation_id: str, from_number: str | None, image_path: str, result=None,
+    project_code: str | None = None,
+) -> Scan:
     """One Scan row per received image (success or failure) -- keeps the file locations and the
     full vision result so the dashboard can show and re-grade it later. project_code starts as the
     sender-history guess and is overwritten with the student's own once the student is known."""
     scan = Scan(
         correlation_id=correlation_id, from_number=from_number, upload_path=image_path,
-        project_code=_project_from_sender_history(session, from_number),
+        project_code=project_code or _project_from_sender_history(session, from_number),
     )
     if result is not None:
         scan.dewarped_path = result.dewarped_image_path
@@ -391,12 +403,16 @@ def _annotate_and_send_checked_image(
     )
 
 
-def _validate_student(session: Session, roll_number: str | None) -> Student:
+def _validate_student(session: Session, roll_number: str | None, project_code: str | None = None) -> Student:
     if not roll_number:
         raise InvalidStudentError("No roll number detected.")
     student = session.get(Student, roll_number)
     if student is None:
         raise InvalidStudentError(f"No registered student found for student_id '{roll_number}'.")
+    if project_code is not None and student.project_code != project_code:
+        raise InvalidStudentError(
+            f"Student '{roll_number}' belongs to project '{student.project_code}', not '{project_code}'."
+        )
     return student
 
 

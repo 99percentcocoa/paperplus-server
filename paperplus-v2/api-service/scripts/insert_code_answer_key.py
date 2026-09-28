@@ -24,9 +24,13 @@ from app.models.worksheet import OMRAnswerSet
 
 
 def parse_answer_key(value: str) -> list[str]:
-    tokens = [piece.strip() for piece in value.split(",") if piece.strip()]
+    # Upper-cased: scanned marks are "A".."D", so a key typed as "a,b,c" would grade everything wrong.
+    tokens = [piece.strip().upper() for piece in value.split(",") if piece.strip()]
     if not tokens:
         raise ValueError("--answer-key must not be empty")
+    bad = sorted({t for t in tokens if t not in {"A", "B", "C", "D"}})
+    if bad:
+        raise ValueError(f"--answer-key labels must be A-D, got {bad}")
     return tokens
 
 

@@ -9,14 +9,16 @@ scans whose student (and so project) couldn't be determined are "unassigned" and
 project's list until someone resolves them to a student.
 """
 
+import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import func, or_
 from sqlalchemy.sql import ColumnElement
 from sqlmodel import Session, select
+from starlette.concurrency import run_in_threadpool
 
 from app.core.config import settings
 from app.db.session import get_session
@@ -28,6 +30,8 @@ from app.services import metrics as metrics_service
 from app.services import monitoring as monitoring_service
 from app.services.corrections import CorrectionError, NotFoundError
 from app.services.monitoring import OPEN_REVIEW_STATUSES
+from app.services.communication import CapturingCommunicationClient
+from app.services.submission_service import handle_incoming_image
 from app.services.vision_client import HTTPVisionClient, VisionClient
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -113,6 +117,21 @@ class RetryScanRequest(BaseModel):
     worksheet_id: int
     roll_number: str | None = None
     question_paper_code: str | None = None
+
+
+MAX_UPLOAD_BYTES = 20 * 1024 * 1024
+
+
+def _image_extension(data: bytes) -> str | None:
+    """From the file's magic bytes rather than Content-Type, which a plain `curl --data-binary`
+    sets to application/x-www-form-urlencoded."""
+    if data.startswith(b"\xff\xd8\xff"):
+        return "jpg"
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "png"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "webp"
+    return None
 
 
 def _to_dict(corrections: list[AnswerCorrection]) -> dict[int, str | None]:
@@ -356,6 +375,88 @@ def correct_submission_answers(
         "submission_id": submission.submission_id,
         "score": submission.score,
         "total_questions": len(submission.answers_json or []),
+    }
+
+
+@project_router.post("/scans")
+async def upload_scan(
+    request: Request,
+    roll_number: str | None = Query(None, description="Student ID; replaces reading it from the photo"),
+    question_paper_code: str | None = Query(None, description="OMR set code A-F; replaces reading it from the photo"),
+    from_number: str | None = Query(None, description="Optional sender to record on the scan (no WhatsApp reply is sent)"),
+    project: Project = Depends(get_project),
+    session: Session = Depends(get_session),
+    vision_client: VisionClient = Depends(get_vision_client),
+) -> dict:
+    """Grade a photo sent straight to the API instead of over WhatsApp, e.g.
+    `curl --data-binary @scan.jpg '.../scans?roll_number=0151&question_paper_code=D'`.
+    Same pipeline as the webhook (failures land on this project's failed-scan list), except the
+    handwritten fields can be supplied, the student must be in this project, and the WhatsApp
+    replies come back in the response instead of being sent."""
+    body = await request.body()
+    if not body:
+        raise HTTPException(status_code=400, detail="Empty body -- send the photo with curl --data-binary @photo.jpg.")
+    if len(body) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Photo larger than 20 MB.")
+    extension = _image_extension(body)
+    if extension is None:
+        raise HTTPException(
+            status_code=415,
+            detail="Body is not a JPEG/PNG/WebP image -- send the file itself with --data-binary @photo.jpg (not -d or -F).",
+        )
+
+    # Grading blocks (DB + a vision-service call of up to a minute) -- keep it off the event loop.
+    return await run_in_threadpool(
+        _grade_upload, session, vision_client, project, body, extension, roll_number, question_paper_code, from_number,
+    )
+
+
+def _grade_upload(
+    session: Session,
+    vision_client: VisionClient,
+    project: Project,
+    body: bytes,
+    extension: str,
+    roll_number: str | None,
+    question_paper_code: str | None,
+    from_number: str | None,
+) -> dict:
+    roll_number = (roll_number or "").strip() or None
+    question_paper_code = (question_paper_code or "").strip().upper() or None
+    if roll_number:
+        student = session.get(Student, roll_number)
+        if student is None or student.project_code != project.project_code:
+            raise HTTPException(status_code=400, detail=f"No student '{roll_number}' in project '{project.project_code}'.")
+
+    correlation_id = str(uuid.uuid4())
+    upload_dir = Path(settings.storage_root) / "uploads"
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    image_path = upload_dir / f"{correlation_id}.{extension}"
+    image_path.write_bytes(body)
+
+    replies = CapturingCommunicationClient()
+    handle_incoming_image(
+        session, vision_client, replies, (from_number or "").strip() or None, str(image_path), correlation_id,
+        roll_number=roll_number, question_paper_code=question_paper_code, project_code=project.project_code,
+    )
+
+    scan = session.exec(select(Scan).where(Scan.correlation_id == correlation_id)).first()
+    review = session.exec(select(ScanReview).where(ScanReview.scan_id == scan.id)).first() if scan else None
+    submission = session.get(Submission, scan.submission_id) if scan and scan.submission_id else None
+    return {
+        "correlation_id": correlation_id,
+        "outcome": scan.outcome if scan else "failed",
+        "scan_id": scan.id if scan else None,
+        "roll_number": scan.roll_number if scan else None,
+        "question_paper_code": scan.question_paper_code if scan else None,
+        "worksheet_id": scan.worksheet_id if scan else None,
+        "submission_id": submission.submission_id if submission else None,
+        "score": submission.score if submission else None,
+        "total_questions": len(submission.answers_json or []) if submission else None,
+        "review_id": review.review_id if review else None,
+        "error_reason": review.error_reason if review else None,
+        "replies": replies.messages,
+        "checked_image_url": _artifact_url("checked", scan.checked_image_path) if scan else None,
     }
 
 
