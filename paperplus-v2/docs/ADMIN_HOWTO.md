@@ -42,6 +42,17 @@ python scripts/import_students_from_csv.py navodaya_batch1.csv --school-code NAV
    python scripts/insert_omr_worksheet.py --id 5001            # 78 questions, 2 pages
    python scripts/insert_omr_worksheet.py --id 5002 --questions 39   # a 1-page sheet
    ```
+   **Many at once**: use the same `--start-id`/`--count` for printing and registering:
+   ```bash
+   python3 batch_generate_worksheets.py --type omr --start-id 5001 --count 100    # old repo: ids 5001-5100
+   python scripts/insert_omr_worksheet.py --start-id 5001 --count 100 --dry-run   # check first
+   python scripts/insert_omr_worksheet.py --start-id 5001 --count 100
+   ```
+   IDs that are already OMR worksheets are skipped, so re-running a range is safe. If any ID in
+   the range is already a homework/practice worksheet, nothing is inserted and the clashing IDs
+   are listed. Pick a different range, since sheets printed with those IDs would be graded
+   against the wrong questions. A range goes in all at once or not at all.
+
    Don't use `insert_single_worksheet.py --json-file blank_omr.json` for OMR sheets. That file
    only has 39 questions, so page 2 of the printed sheet couldn't be graded.
 
