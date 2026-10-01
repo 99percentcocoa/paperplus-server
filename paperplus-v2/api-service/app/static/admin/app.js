@@ -33,13 +33,15 @@ function h(tag, attrs, ...kids) {
   return el;
 }
 
+// options.raw: send options.body as-is (e.g. a File) instead of as JSON.
 async function api(path, options = {}) {
   const base = GLOBAL_PATHS.some((p) => path.startsWith(p))
     ? "/api/admin"
     : `/api/admin/projects/${encodeURIComponent(PROJECT)}`;
-  const res = await fetch(base + path, {
+  const { raw, ...fetchOptions } = options;
+  const res = await fetch(base + path, raw ? fetchOptions : {
     headers: { "Content-Type": "application/json" },
-    ...options,
+    ...fetchOptions,
     body: options.body ? JSON.stringify(options.body) : undefined,
   });
   if (!res.ok) {
@@ -726,6 +728,82 @@ function weekByWeekCard(weeks) {
   return h("div", { class: "card" }, h("h2", {}, "Week by week"), h("div", { class: "table-wrap" }, table));
 }
 
+// ---------- upload ----------
+// Grades photos through POST /scans -- the same pipeline as WhatsApp, except the roll number and
+// question-paper code can be typed in instead of read from the photo, and nothing is sent to
+// WhatsApp. Files go one at a time (each is graded inside its request, a few seconds apiece).
+function uploadView() {
+  setActiveNav("upload");
+  const fileInput = h("input", { type: "file", accept: "image/jpeg,image/png,image/webp", multiple: true });
+  const rollInput = h("input", { placeholder: "read from photo", size: 14 });
+  const codeInput = h("input", { placeholder: "read from photo", maxlength: 1, size: 14 });
+  const button = h("button", { class: "primary" }, "Upload and grade");
+  const tbody = h("tbody", {}, emptyRow(6, "Results appear here."));
+
+  const resultRow = (file, data, error) => {
+    const outcome = error ? "failed" : data.outcome;
+    let result;
+    if (error) result = error;
+    else if (data.submission_id) {
+      result = [`${data.score}/${data.total_questions} `, h("a", { href: `#/submissions/${data.submission_id}` }, "View submission →")];
+    } else {
+      result = [data.error_reason || "Failed", " ", data.review_id ? h("a", { href: `#/reviews/${data.review_id}` }, "Open failed scan →") : null];
+    }
+    return h("tr", {},
+      h("td", {}, file.name),
+      h("td", {}, pill(outcome === "graded" ? "graded" : "failed")),
+      h("td", {}, data?.roll_number || "—"),
+      h("td", {}, data?.question_paper_code || "—"),
+      h("td", {}, data?.worksheet_id ?? "—"),
+      h("td", {}, result));
+  };
+
+  button.addEventListener("click", async () => {
+    const files = [...fileInput.files];
+    if (!files.length) { toast("Choose at least one photo first.", true); return; }
+    const params = new URLSearchParams();
+    const roll = rollInput.value.trim();
+    const code = codeInput.value.trim().toUpperCase();
+    if (code && !/^[A-F]$/.test(code)) { toast("Question paper code must be a single letter A–F.", true); return; }
+    if (roll) params.set("roll_number", roll);
+    if (code) params.set("question_paper_code", code);
+
+    button.disabled = true;
+    tbody.replaceChildren();
+    for (const [i, file] of files.entries()) {
+      button.textContent = `Grading ${i + 1} of ${files.length}…`;
+      let row;
+      try {
+        row = resultRow(file, await api("/scans" + (params.toString() ? "?" + params : ""), { method: "POST", body: file, raw: true }));
+      } catch (e) {
+        row = resultRow(file, null, e.message);
+      }
+      tbody.append(row);
+    }
+    button.disabled = false;
+    button.textContent = "Upload and grade";
+    fileInput.value = "";
+    updateBadge();
+  });
+
+  app.replaceChildren(
+    h("h1", {}, "Upload scans"),
+    h("p", { class: "muted" },
+      "Grade photos without WhatsApp. Leave a field blank to read it from the photo, or fill it in when the handwriting is wrong or unreadable. " +
+      "Whatever you enter applies to every photo in this upload, so for different students, upload them separately or leave the roll number blank. " +
+      "Results are saved like a WhatsApp scan, but nothing is sent to WhatsApp."),
+    h("div", { class: "card" },
+      h("div", { class: "fields" },
+        h("label", {}, "Photos (JPEG, PNG or WebP)", fileInput),
+        h("label", {}, "Roll number (optional)", rollInput),
+        h("label", {}, "Question paper code (optional, A–F)", codeInput),
+        h("label", {}, " ", button))),
+    h("div", { class: "card" }, h("h2", {}, "Results"),
+      h("div", { class: "table-wrap" }, h("table", {},
+        h("thead", {}, h("tr", {}, ["Photo", "Outcome", "Roll no.", "Code", "Worksheet", "Result"].map((t) => h("th", {}, t)))),
+        tbody))));
+}
+
 // ---------- router ----------
 async function route() {
   clearInterval(refreshTimer);
@@ -741,6 +819,7 @@ async function route() {
     else if (parts[0] === "schools" && parts[1]) await schoolView(parts[1]);
     else if (parts[0] === "schools") await schoolsView();
     else if (parts[0] === "metrics") await metricsView(params);
+    else if (parts[0] === "upload") uploadView();
     else app.replaceChildren(h("p", {}, "Page not found. ", h("a", { href: "#/" }, "Go to overview")));
     if (parts.length) { updateBadge(); updateStatus(); }
   } catch (e) {

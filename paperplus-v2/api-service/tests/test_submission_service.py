@@ -22,6 +22,7 @@ from app.models import (
     Worksheet,
 )
 from app.models.mastery import MasteryHistory
+from app.models.worksheet import OMRAnswerSet
 from app.models.submission import ProcessingState
 from app.models.worksheet import WorksheetPage
 from app.services.submission_service import handle_incoming_image
@@ -257,6 +258,15 @@ def test_handle_incoming_image_refuses_to_grade_with_no_answer_key(session: Sess
     """
     worksheet, student = worksheet_with_questions
 
+    # Tests share the real dev DB, where real code-level (worksheet-independent) answer keys get
+    # seeded for live OMR sets -- so pick a code nobody has seeded rather than hardcoding one.
+    seeded = set(session.exec(
+        select(OMRAnswerSet.question_paper_code).where(OMRAnswerSet.worksheet_id.is_(None))
+    ).all())
+    unseeded_code = next((c for c in "ABCDEF" if c not in seeded), None)
+    if unseeded_code is None:
+        pytest.skip("every question-paper code A-F has a code-level answer key in this DB")
+
     # Strip the fixture's canonical answer key so resolve_answer_key finds nothing, simulating
     # an OMR worksheet whose question-paper-code variant was never seeded.
     for option in session.exec(select(QuestionOption).where(QuestionOption.question_id.in_(
@@ -273,7 +283,7 @@ def test_handle_incoming_image_refuses_to_grade_with_no_answer_key(session: Sess
         template_name="basic_omr",
         roll_number=student.student_id,
         roll_number_confidence=None,
-        question_paper_code="A",  # no question_paper_variant seeded for "A"
+        question_paper_code=unseeded_code,
         question_marks=[
             QuestionMark(question_index=1, marked_option="A", confidence=0.9),
             QuestionMark(question_index=2, marked_option="B", confidence=0.9),

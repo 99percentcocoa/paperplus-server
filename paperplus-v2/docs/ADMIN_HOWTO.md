@@ -74,7 +74,16 @@ different key for a code, `insert_question_paper_variant.py --worksheet-id 5001 
 --answer-key ...` overrides it for that worksheet only. A sheet scanned with a code that has no
 key is not graded. It shows up under "Failed scans" as missing an answer key.
 
-## Send a scan without WhatsApp (curl), optionally giving the handwritten fields
+## Send a scan without WhatsApp, optionally giving the handwritten fields
+
+**From the dashboard:** open the project's dashboard, then **Upload** in the top bar
+(`<host>/admin/<project>/#/upload`). Choose one or more photos, optionally type the roll number
+and/or question-paper code, and press *Upload and grade*. Each photo gets a result row with the
+score (linking to the submission) or the reason it failed (linking to the failed scan). A typed
+roll number/code applies to **every** photo in that upload: use it for the pages of one
+student's sheet, or leave it blank to read it from each photo.
+
+**From a terminal (curl):** same endpoint the Upload page uses.
 
 ```bash
 # Everything read from the photo, like WhatsApp:
