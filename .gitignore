@@ -1,48 +1,40 @@
-# Python cache files
+# Python
 __pycache__/
 *.pyc
-
-# Virtual environment
-venv/
-serverenv/
-env/
+*.egg-info/
+.pytest_cache/
 .venv/
+venv/
 
-# Local settings and secrets
-config.json
+# Secrets and per-machine settings
 .env
+.env.*
+!.env.example
 .env_new
-secrets.json
-.pylintrc
-nginx.conf
-paperplus.service
-paperplus.sql
-sync-db.sh
 CLAUDE.md
+.claude/settings.local.json
+.vscode/
+.idea/
+.pylintrc
+.DS_Store
+
+# Production compose file (kept on the server, not in the repo)
 docker-compose.prod.yml
 
-# Logs and temp files
+# Runtime storage (STORAGE_ROOT) and local dev storage
+files/
+shared_dev_files/
 *.log
-*.tmp
+
+# Leftovers from the pre-v2 system kept on this machine (data, DB dumps, old outputs)
+*.sql
 *.zip
-paperplus.sql
-paperplus_16092026.sql
-
-# System or editor files
-.DS_Store
-.idea/
-.vscode/
-PaperPlus System.md
-
-# Uploads or generated data
-downloads/
-images/
-dewarped/
 testing/
-debug/
 checked/
+debug/
+dewarped/
+downloads/
 logs/
 offline/
-json/
-pdf/
-csv/
+sync-db.sh
+PaperPlus System.md
