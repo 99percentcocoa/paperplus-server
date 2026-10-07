@@ -66,3 +66,30 @@ def test_validate_question_paper_code():
     assert validate_question_paper_code("AB") == ""
     assert validate_question_paper_code(None) == ""
     assert validate_question_paper_code(123) == ""
+
+
+def test_shared_row_tags_roundtrip_across_id_range_and_pages():
+    """The generator (api-service) and the scanner (vision-service) both use shared.row_tags --
+    every printable id/page must decode back to itself and only use valid 25h9 tag ids (0..34)."""
+    import random
+
+    from shared.row_tags import MAX_WORKSHEET_ID
+
+    rng = random.Random(0)
+    ids = [0, 1, 34, 35, 4810, 99999, MAX_WORKSHEET_ID] + [rng.randint(0, MAX_WORKSHEET_ID) for _ in range(2000)]
+    for worksheet_id in ids:
+        for page_no, first_question_index in ((None, None), (1, 1), (2, 40)):
+            rows = worksheet_id_to_rows(worksheet_id, page_no=page_no, first_question_index=first_question_index)
+            assert all(0 <= tag <= 34 for tag in rows), (worksheet_id, rows)
+            decoded = decode_row_tag_metadata(rows)
+            assert decoded["worksheet_id"] == worksheet_id
+            assert decoded["page_no"] == (page_no or 1)
+            assert decoded["first_question_index"] == (first_question_index or 1)
+
+
+def test_vision_tags_reexports_shared_implementation():
+    import shared.row_tags as shared_row_tags
+    from app.vision import tags
+
+    assert tags.worksheet_id_to_rows is shared_row_tags.worksheet_id_to_rows
+    assert tags.decode_row_tag_metadata is shared_row_tags.decode_row_tag_metadata

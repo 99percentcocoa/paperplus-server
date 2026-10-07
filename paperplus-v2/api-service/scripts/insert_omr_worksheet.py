@@ -2,8 +2,10 @@
 """Register a basic_omr worksheet in the database, straight from its id -- no JSON file needed,
 since an OMR sheet has no question content (just numbered A-D bubbles).
 
-The printed PDF still comes from the old repo's generator, which prints the worksheet id into the
-sheet's tags. It prints 2 pages (Q1-39 and Q40-78), so the default here is 78 questions:
+For NEW sheets use scripts/generate_worksheets.py --type omr, which registers and prints them in
+one step. This script is for sheets already printed by the old repo's generator, which prints the
+worksheet id into the sheet's tags. It prints 2 pages (Q1-39 and Q40-78), so the default here is
+78 questions:
 
     # old repo root: print the sheet
     python3 batch_generate_worksheets.py --type omr --worksheet-id 5001
@@ -34,21 +36,9 @@ from sqlmodel import Session, select
 
 from app.db.session import engine
 from app.domain.worksheet_import import insert_worksheet
+from app.generation.composition import compose_omr_worksheet
 from app.models import Worksheet
 from shared.worksheet_templates import QUESTIONS_PER_PAGE
-
-
-def blank_omr_json(question_count: int, title: str, language: str) -> dict:
-    return {
-        "title": title,
-        "worksheet_category": "omr",
-        "template_name": "basic_omr",
-        "language": language,
-        "questions": [
-            {"index": i, "question_text": "", "options": ["", "", "", ""], "correct_option": ""}
-            for i in range(1, question_count + 1)
-        ],
-    }
 
 
 def main() -> None:
@@ -92,7 +82,7 @@ def main() -> None:
             print(f"Dry run: would insert {len(to_insert)} OMR worksheet(s): {_ranges(to_insert)}")
             return
 
-        payload = blank_omr_json(args.questions, args.title, args.language)
+        payload = compose_omr_worksheet(args.questions, language=args.language, title=args.title)
         for worksheet_id in to_insert:
             insert_worksheet(
                 session, payload, worksheet_id=worksheet_id, worksheet_category="omr",

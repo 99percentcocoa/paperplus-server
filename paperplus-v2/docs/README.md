@@ -52,17 +52,26 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8100
 ```
 
-## Worksheet insertion / admin scripts
+## Worksheet generation / admin scripts
 
-Worksheet PDF/JSON *generation* is not ported to v2 — use the old repo's `worksheet_json_generator.py`/`batch_generate_worksheets.py` for that. Once JSON exists, insert it and manage students/answer-key variants with (from `api-service/`, venv activated):
+Worksheets are generated in v2 (`api-service/app/generation/`, plan and validation in
+`docs/PHASE9_GENERATION.md`): one command composes the questions, inserts them, and writes the
+printable PDFs, so a printed sheet always carries an id the database holds. From `api-service/`,
+venv activated (step-by-step usage in `docs/ADMIN_HOWTO.md`):
 
 ```bash
-python3 scripts/seed_skills.py                                             # once, before any worksheet insert
-python3 scripts/insert_single_worksheet.py --json-file 8001_en.json --type homework
-python3 scripts/bulk_insert_worksheets.py --json-dir ../../files/json      # or --dry-run first
+python3 scripts/seed_skills.py                                                  # once, before the first batch
+python3 scripts/generate_worksheets.py --type homework --level A --language mr --count 50 --merge
+python3 scripts/generate_worksheets.py --type omr --start-id 5001 --count 100
+python3 scripts/render_worksheet_pdf.py --id 4920                               # reprint from the DB
 python3 scripts/import_students_from_csv.py students.csv --school-code PSV
-python3 scripts/insert_question_paper_variant.py --worksheet-id 9001 --code A --answer-key A,B,C,D,...
+python3 scripts/insert_code_answer_key.py --code D --answer-key A,B,C,D,...
 ```
+
+The old repo's `batch_generate_worksheets.py`/`worksheet_json_generator.py`/`worksheet_pdf_generator.py`
+are superseded. With the same seed, the port produces identical questions, and its PDFs are
+pixel-identical to the old renderer's. The JSON-file insertion scripts (`insert_single_worksheet.py`,
+`bulk_insert_worksheets.py`) remain for JSON files that already exist.
 
 ## Generating the first Alembic migration
 

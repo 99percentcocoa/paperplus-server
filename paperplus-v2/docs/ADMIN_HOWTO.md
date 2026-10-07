@@ -29,32 +29,69 @@ python scripts/import_students_from_csv.py navodaya_batch1.csv --school-code NAV
   whole import is refused and nothing is written.
 - Re-running the same CSV is safe: existing students in the same project are left as they are.
 
+## Generate homework and practice worksheets
+
+One command writes the questions to the database *and* the printable PDFs, so every printed
+sheet's ID is one the database knows:
+
+```bash
+python scripts/generate_worksheets.py --type homework --level A --language mr --count 50
+python scripts/generate_worksheets.py --type practice --level D3 --language en --count 5
+python scripts/generate_worksheets.py --type homework --level C --count 50 --merge      # + one print file
+python scripts/generate_worksheets.py --type homework --level C --count 50 --dry-run    # check first
+```
+
+- Levels: homework `A`–`G`; practice is a theme plus a level, `A1`–`A5`, `S1`–`S5`, `M1`–`M5`,
+  `D1`–`D5` (Addition, Subtraction, Multiplication, Division).
+- IDs: the database picks the next free IDs. To choose them, add `--start-id 6000`; if any ID
+  in the range is taken, nothing is written.
+- PDFs go to `files/worksheets/` (or `--out-dir`), one per sheet, named
+  `<id>_<lang>_<type>_<LEVEL>.pdf`. `--merge` also writes one combined `..._print.pdf` for the
+  print shop.
+- Run `python scripts/seed_skills.py` once before the first batch on a new database.
+- Every sheet's random seed is saved with it, so a sheet can be regenerated identically.
+  `--seed N` fixes the seeds (sheet *i* gets seed N + *i*).
+
+**In docker**, write the PDFs to a folder on the host:
+
+```bash
+docker compose run --rm -v "$PWD/print:/print" api-service \
+  python scripts/generate_worksheets.py --type homework --level A --language mr --count 50 --merge --out-dir /print
+```
+
 ## Add a new OMR worksheet
 
-1. **Print it** (old repo root, which still owns PDF generation). The worksheet ID is printed
-   into the sheet's tags:
-   ```bash
-   python3 batch_generate_worksheets.py --type omr --worksheet-id 5001
-   ```
-   This writes two PDFs, page 1 (Q1–39) and page 2 (Q40–78).
-2. **Register it** (v2):
-   ```bash
-   python scripts/insert_omr_worksheet.py --id 5001            # 78 questions, 2 pages
-   python scripts/insert_omr_worksheet.py --id 5002 --questions 39   # a 1-page sheet
-   ```
-   **Many at once**: use the same `--start-id`/`--count` for printing and registering:
-   ```bash
-   python3 batch_generate_worksheets.py --type omr --start-id 5001 --count 100    # old repo: ids 5001-5100
-   python scripts/insert_omr_worksheet.py --start-id 5001 --count 100 --dry-run   # check first
-   python scripts/insert_omr_worksheet.py --start-id 5001 --count 100
-   ```
-   IDs that are already OMR worksheets are skipped, so re-running a range is safe. If any ID in
-   the range is already a homework/practice worksheet, nothing is inserted and the clashing IDs
-   are listed. Pick a different range, since sheets printed with those IDs would be graded
-   against the wrong questions. A range goes in all at once or not at all.
+```bash
+python scripts/generate_worksheets.py --type omr --start-id 5001 --count 100 --merge
+```
 
-   Don't use `insert_single_worksheet.py --json-file blank_omr.json` for OMR sheets. That file
-   only has 39 questions, so page 2 of the printed sheet couldn't be graded.
+Each sheet gets 78 questions on 2 pages (Q1–39 and Q40–78) and two PDFs (`..._page1.pdf`,
+`..._page2.pdf`). Use `--questions 39` for a 1-page sheet. Then add the answer key for each
+question-paper code (next section).
+
+**Sheets already printed by the old system** (`batch_generate_worksheets.py --type omr`) only need
+registering, using the IDs printed on them:
+
+```bash
+python scripts/insert_omr_worksheet.py --start-id 5001 --count 100 --dry-run   # check first
+python scripts/insert_omr_worksheet.py --start-id 5001 --count 100
+```
+
+IDs that are already OMR worksheets are skipped, so re-running a range is safe. If any ID in the
+range is already a homework/practice worksheet, nothing is inserted and the clashing IDs are
+listed. Don't use `insert_single_worksheet.py --json-file blank_omr.json` for OMR sheets. That
+file only has 39 questions, so page 2 of the printed sheet couldn't be graded.
+
+## Reprint worksheets
+
+Any worksheet in the database can be printed again from its stored questions. This includes
+sheets made before v2, as long as they were inserted or migrated:
+
+```bash
+python scripts/render_worksheet_pdf.py --id 4920
+python scripts/render_worksheet_pdf.py --start-id 4920 --count 900 --merge
+python scripts/render_worksheet_pdf.py --id 4920 --export-json    # also write the JSON
+```
 
 Worksheets aren't tied to a project. The same OMR worksheet ID can be used by PaperPlus and
 Navodaya students.
