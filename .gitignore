@@ -11,6 +11,7 @@ env/
 # Local settings and secrets
 config.json
 .env
+.env_new
 secrets.json
 .pylintrc
 nginx.conf
@@ -18,6 +19,7 @@ paperplus.service
 paperplus.sql
 sync-db.sh
 CLAUDE.md
+docker-compose.prod.yml
 
 # Logs and temp files
 *.log
