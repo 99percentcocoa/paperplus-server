@@ -21,6 +21,10 @@ CLAUDE.md
 # Production compose file (kept on the server, not in the repo)
 docker-compose.prod.yml
 
+# Database dumps from infra/sync-prod-to-dev.sh (real student data)
+sync-prod-to-dev.sh
+db_snapshots/
+
 # Runtime storage (STORAGE_ROOT) and local dev storage
 files/
 shared_dev_files/

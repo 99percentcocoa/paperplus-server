@@ -88,6 +88,27 @@ Settings come from environment variables or each service's `.env` (see `app/core
 The two services' shared secret (`VISION_SERVICE_SHARED_SECRET` in api-service, `SHARED_SECRET` in
 vision-service) must match.
 
+### Copy production data to dev
+
+`infra/sync-prod-to-dev.sh` replaces the dev database with a copy of prod (one way: prod is only
+read), so you can try changes against real data. One-time setup: create `infra/.env.sync`
+(git-ignored) containing `PROD_SSH=user@prod-host`. Your SSH user must be able to run `docker`
+on the server; if it needs sudo, also set `PROD_DOCKER="sudo docker"`.
+
+```bash
+infra/sync-prod-to-dev.sh                 # dump prod, back up + replace the dev DB, run migrations
+infra/sync-prod-to-dev.sh --with-files    # also copy prod's scan and checked images
+infra/sync-prod-to-dev.sh --from-file db_snapshots/prod_<timestamp>.sql.gz   # reload a saved dump, no SSH
+```
+
+- **Safety checks:** it refuses unless the dev database is on this machine and is not the prod
+  server (this catches an SSH tunnel to prod). It also requires `LOCAL_MODE=true` in
+  `api-service/.env`, because prod data has real phone numbers.
+- **Snapshots:** prod dumps and a backup of the replaced dev database go to `db_snapshots/`
+  (git-ignored, newest 5 kept). These contain real student data, so keep them on this machine.
+- **Tests:** the dev database's existing contents are replaced, and api-service tests then run
+  against prod-shaped data.
+
 ## Everyday tasks
 
 Full steps are in [docs/ADMIN_HOWTO.md](docs/ADMIN_HOWTO.md). Scripts run from `api-service/`:
